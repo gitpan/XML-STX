@@ -1,8 +1,8 @@
 package XML::STX::STXPath;
 
-require 5.005_62;
+require 5.005_02;
+BEGIN { require warnings if $] >= 5.006; }
 use strict;
-use warnings;
 use XML::STX::Base;
 use XML::STX::Functions;
 
@@ -329,13 +329,13 @@ sub fcCall {
 	$self->doError(15, 3, scalar @arg, $fce, 1) if @arg > 1;
 	return $self->F_name($arg);
 
-    } elsif ($fce eq 'namespace') {
+    } elsif ($fce eq 'namespace-uri') {
 	$self->doError(216, 3, "\'$fce()\'") unless $nodes;
 	# current node is used when no argument found
 	my $arg = $arg[0] ? $arg[0] 
 	  : [[$self->{STX}->{Stack}->[$#{$self->{STX}->{Stack}}],STX_NODE]];
 	$self->doError(15, 3, scalar @arg, $fce, 1) if @arg > 1;
-	return $self->F_namespace($arg);
+	return $self->F_namespace_uri($arg);
 
     } elsif ($fce eq 'local-name') {
 	$self->doError(216, 3, "\'$fce()\'") unless $nodes;
@@ -500,6 +500,7 @@ sub relAccess {
 	$self->doError(216, 3, "\'$self->{tokens}->[0]\'") unless $nodes;
 	$result = $self->accessStep($nodes);
     }
+
     #print "EXP: ", _dbg_print('relAccess', $result);
     return $result;
 }
@@ -565,7 +566,7 @@ sub accessStep {
 	    $nodes = $self->nodeNameTest($nodes);
 	}
 
-	#print "EXP: ==>matching: ", join(',',map(($_->{Name} or $_->{Data}),@$nodes)),"\n" if $nodes->[0];
+	#print "EXP: ==>matching: ", join(',',map(($_->{Name} or $_->{Data} or $_->{Value}),@$nodes)),"\n" if $nodes->[0];
 	#print "EXP: accessStep again $self->{tokens}->[0]\n" if $self->{tokens}->[0];
 
 	if (defined $self->{tokens}->[0] && $self->{tokens}->[0] ne ',') {
@@ -600,6 +601,7 @@ sub accessStep {
 
 sub nodeNameTest {
     my ($self, $nodes) = @_;
+    $self->{tokens}->[0] || ($self->{tokens}->[0] = '');
     #print "EXP: nodeNameTest ", $self->{tokens}->[0], "\n";
 
     my $res_nodes = [];
@@ -670,6 +672,13 @@ sub nodeNameTest {
     # self axis
     } elsif ($self->{axis} eq 'self') {
 	$res_nodes = $nodes; 
+
+    # namespace axis
+    } elsif ($self->{axis} eq 'namespace') {
+	foreach (@$nodes) {
+	    my $res = $self->namespaces($_);
+	    push @$res_nodes, @$res;
+	}
     }
 
     shift @{$self->{tokens}};
@@ -691,11 +700,40 @@ sub attributes {
 
     foreach (@{$nodes}) {
 	my $res = $self->_attribute_match($_->{Index}, $pre, $lname);
-	push @$res_nodes, $res if ref($res);
+	push @$res_nodes, @$res;
     }
     shift @{$self->{tokens}};
     #print "EXP: attributes ",join(':',map($_->{Name},@$res_nodes)),"\n";
     return $res_nodes;
+}
+
+sub namespaces {
+    my ($self, $node) = @_;
+    #print "EXP: namespaces ", $self->{tokens}->[0], "\n";
+
+    my $ns_nodes = [];
+    my $pref = $self->{tokens}->[0];
+
+    if ($node->{Type} == 1) {
+	my @prefs = $pref eq '*' ? $self->{STX}->{ns}->get_prefixes 
+	  : ($self->{tokens}->[0]);
+
+	foreach (@prefs) {
+	    my $p = $_ eq '' ? '#default' : $_;
+	    my $uri = $self->{STX}->{ns}->get_uri($p);
+	    my $node = {Type => STX_NS_NODE, 
+			Index => scalar @{$self->{STX}->{Stack}} + 1,
+			Name => $p,
+			Value => $uri,
+		       };
+	    #print "EXP: NS node $p|$uri\n";
+	    push @$ns_nodes, $node;
+	}
+    } else {
+       	$self->doError(17, 3, $node->{Type});
+    }
+
+    return $ns_nodes;
 }
 
 # ==================================================
@@ -941,24 +979,25 @@ sub _attribute_match {
     my ($self, $findex, $pre, $lname) = @_;
 
     my $node = $self->{STX}->{Stack}->[$findex];
+    my $attributes = [];
     # element node
     if ($node->{Type} == 1) {
 	# attribute expanded name matches
 	foreach (keys %{$node->{Attributes}}) {
 	    #print "EXP: attribute: $_\n";
 	    my $att = $self->_node_match($node->{Attributes}->{$_},$pre,$lname);
-	    return $att if ref $att;
+	    push @$attributes, $att if ref $att;
  	}
     }
-    return -1;
+    return $attributes;
 }
 
 # if an attribute matches QName, it's added to node-set
 sub _lookahead {
     my $self = shift;
 
-    return $self->{STX}->{lookahead}->[1] 
-      if $self->{STX}->{lookahead}->[0] == STXE_CHARACTERS;
+    return $self->{STX}->{_lAhead}->[1] 
+      if $self->{STX}->{_lAhead}->[0] == STXE_CHARACTERS;
 
     return -1;
 }
@@ -1153,6 +1192,7 @@ sub _dbg_print {
 	if (ref $_->[0]) {
 	    push @out, ($_->[0]->{Name} 
 			or $_->[0]->{Data} 
+			or $_->[0]->{Value} 
 			or $_->[0]->{Type});
 	} else {
 	    push @out, $_->[0];

@@ -1,8 +1,8 @@
 package XML::STX::Compiler;
 
-require 5.005_62;
+require 5.005_02;
+BEGIN { require warnings if $] >= 5.006; }
 use strict;
-use warnings;
 use XML::STX::Base;
 use XML::STX::Stylesheet;
 use Clone qw(clone);
@@ -32,6 +32,7 @@ sub start_document {
 
     $self->{e_stack} = [];
     $self->{g_stack} = [];
+    $self->{nsc} = XML::NamespaceSupport->new({ xmlns => 1 });
 }
 
 sub end_document {
@@ -48,6 +49,7 @@ sub start_element {
     $self->doError(201, 3) if $self->{end};
 
     $el->{vars} = [];
+    $self->{nsc}->pushContext;
 
     my $a = exists $el->{Attributes} ? $el->{Attributes} : {};
     my $e_stack_top = $#{$self->{e_stack}} == -1 ? undef 
@@ -84,14 +86,15 @@ sub start_element {
 	    if ($self->_allowed($el->{LocalName})) {
 		
 		if (exists $a->{'{}default-stxpath-namespace'}) {
-		    ($a->{'{}default-stxpath-namespace'}->{Value} 
-		      =~ /^$ATT_URIREF$/)
-		      ? $self->{Sheet}->{Options}->{'default-stxpath-namespace'}
-			= $a->{'{}default-stxpath-namespace'}->{Value} 
-			  : $self->doError(217, 3, 
-				'default-stxpath-namespace', 
-				$a->{'{}default-stxpath-namespace'}->{Value}, 
-				'uri-reference', );	  
+		    if ($a->{'{}default-stxpath-namespace'}->{Value} 
+			=~ /^$ATT_URIREF$/) {
+			$self->{Sheet}->{Options}->{'default-stxpath-namespace'}
+			  = $a->{'{}default-stxpath-namespace'}->{Value};
+		    } else {
+			$self->doError(217, 3, 'default-stxpath-namespace', 
+				       $a->{'{}default-stxpath-namespace'}->{Value},
+				       'uri-reference', );	  
+		    }
 		}
 
 		if (exists $a->{'{}recognize-cdata'}) {
@@ -104,14 +107,15 @@ sub start_element {
 		}
 
 		if (exists $a->{'{}output-encoding'}) {
-		    ($a->{'{}output-encoding'}->{Value} 
-		      =~ /^$ATT_STRING$/)
-		      ? $self->{Sheet}->{Options}->{'output-encoding'}
-			= $a->{'{}output-encoding'}->{Value} 
-			  : $self->doError(217, 3, 
-					   'output-encoding', 
-					   $a->{'{}output-encoding'}->{Value},
-					   'string');	  
+		    if ($a->{'{}output-encoding'}->{Value} 
+			=~ /^$ATT_STRING$/) {
+			$self->{Sheet}->{Options}->{'output-encoding'}
+			  = $a->{'{}output-encoding'}->{Value};
+		    } else {
+			 $self->doError(217, 3, 'output-encoding', 
+					$a->{'{}output-encoding'}->{Value},
+					'string');	  
+		    }
 		}
 
 		if (exists $a->{'{}pass-through'}) {
@@ -170,8 +174,11 @@ sub start_element {
 		      unless $a->{'{}name'}->{Value} =~ /^$ATT_QNAME$/;
 		    $g->{name} = $a->{'{}name'}->{Value};
 
-		    $self->doError(219, 2, $g->{name}) 
-		      if exists $self->{Sheet}->{named_templates}->{$g->{name}};
+		    my @g = $self->{nsc}->process_element_name($g->{name});
+		    $g->{name} = "$g[0]:$g[2]" if $g[0];
+
+		    $self->doError(219, 3, 'group', $g->{name}) 
+		      if exists $self->{Sheet}->{named_groups}->{$g->{name}};
 
 		    $self->{Sheet}->{named_groups}->{$g->{name}} = $g;
 		}
@@ -191,7 +198,7 @@ sub start_element {
 
 		# --- match ---
 		$self->doError(212, 3, '<stx:template>', 'match')
-		  unless exists $el->{Attributes}->{'{}match'};
+		  unless exists $a->{'{}match'};
 
 		$t->{match} = $self->tokenize_match($a->{'{}match'}->{Value});
 
@@ -304,14 +311,90 @@ sub start_element {
 		$self->{Sheet}->{next_tid}++;
 	    }
 
-	# <stx:procedure> ---------------------------------------- 
-        # needs attention !!!
+	# <stx:procedure> ----------------------------------------
 
 	} elsif ($el->{LocalName} eq'procedure') {
 
 	    if ($self->_allowed($el->{LocalName})) {
 
+		my $p = XML::STX::Template->new($self->{Sheet}->{next_tid},
+						$g_stack_top
+					       );
 
+		# --- name ---
+		$self->doError(212, 3, '<stx:procedure>', 'name')
+		  unless exists $a->{'{}name'};
+
+		$self->doError(214,3,'name','<stx:procedure>', 'qname') 
+		  unless $a->{'{}name'}->{Value} =~ /^$ATT_QNAME$/;
+		$p->{name} = $a->{'{}name'}->{Value};
+
+		my @p = $self->{nsc}->process_element_name($p->{name});
+		$p->{name} = "$p[0]:$p[2]" if $p[0];
+
+
+		# --- visibility ---
+		if (exists $a->{'{}visibility'}) {
+			
+		    if ($a->{'{}visibility'}->{Value} eq 'public') {
+			$p->{visibility} = 2;
+			push @{$g_stack_top->{proc_public}}, $p;
+
+			# the current group can see
+			$self->doError(219, 3, 'procedure', $p->{name}) 
+			  if exists $g_stack_top->{proc_visible}->{$p->{name}};
+			$g_stack_top->{proc_visible}->{$p->{name}} = $p;
+
+			# the parent group can see as well
+			if ($#{$self->{g_stack}} > 0) {
+			    $self->doError(219, 3, 'procedure', $p->{name}) 
+			      if exists $self->{g_stack}->[$#{$self->{g_stack}} - 1]->{proc_visible}->{$p->{name}};
+			$self->{g_stack}->[$#{$self->{g_stack}} - 1]->{proc_visible}->{$p->{name}} = $p;
+			}
+			    
+		    } elsif ($a->{'{}visibility'}->{Value} eq 'global') {
+			$p->{visibility} = 3;
+			push @{$g_stack_top->{proc_public}}, $p;
+			# visible from any group
+			unshift @{$self->{Sheet}->{proc_global}}, $p;
+
+			# the current group can see
+			$self->doError(219, 3, 'procedure', $p->{name}) 
+			  if exists $g_stack_top->{proc_visible}->{$p->{name}};
+			$g_stack_top->{proc_visible}->{$p->{name}} = $p;
+
+			# the parent group can see as well
+			if ($#{$self->{g_stack}} > 0) {
+			    $self->doError(219, 3, 'procedure', $p->{name}) 
+			      if exists $self->{g_stack}->[$#{$self->{g_stack}} - 1]->{proc_visible}->{$p->{name}};
+			$self->{g_stack}->[$#{$self->{g_stack}} - 1]->{proc_visible}->{$p->{name}} = $p;
+			}
+			
+		    } elsif ($a->{'{}visibility'}->{Value} ne 'private') {
+			$self->doError(204, 3, $a->{'{}visibility'}->{Value})
+		    }
+
+		} else { # default is 'private'
+		    $p->{visibility} = 1;
+		    $g_stack_top->{proc_visible}->{$p->{name}} = $p;
+		}
+		
+		# --- new-scope ---
+		if (exists $a->{'{}new-scope'}) {
+		    if ($a->{'{}new-scope'}->{Value} eq 'yes') {
+			$p->{'new-scope'} = 1
+		    } elsif ($a->{'{}new-scope'}->{Value} ne 'no') {
+			$self->doError(205, 3, 'new-scope',
+				       $a->{'{}new-scope'}->{Value});
+		    }
+		}
+		
+		#print "COMP: >new procedure $self->{Sheet}->{next_tid} $p\n";
+		#print "COMP: >name $p->{name}\n";
+		$g_stack_top->{procedures}->{$self->{Sheet}->{next_tid}} = $p;
+
+		$self->{c_template} = $p;
+		$self->{Sheet}->{next_tid}++;
 	    }
 
 	# <stx:process-children> ----------------------------------------
@@ -325,6 +408,9 @@ sub start_element {
 				   'qname') 
 		      unless $a->{'{}group'}->{Value} =~ /^$ATT_QNAME$/;
 		    $group = $a->{'{}group'}->{Value};
+
+		    my @g = $self->{nsc}->process_element_name($group);
+		    $group = "$g[0]:$g[2]" if $g[0];
 		}
 
 		push @{$self->{c_template}->{instructions}}, 
@@ -343,11 +429,69 @@ sub start_element {
 				   'qname') 
 		      unless $a->{'{}group'}->{Value} =~ /^$ATT_QNAME$/;
 		    $group = $a->{'{}group'}->{Value};
+
+		    my @g = $self->{nsc}->process_element_name($group);
+		    $group = "$g[0]:$g[2]" if $g[0];
 		}
 
 		push @{$self->{c_template}->{instructions}}, 
 		  [I_P_ATTRIBUTES, $group];
 		#print "COMP: >PROCESS ATTRIBUTES\n";
+	    }
+
+	# <stx:process-self> ----------------------------------------
+	} elsif ($el->{LocalName} eq'process-self') {
+
+	    if ($self->_allowed($el->{LocalName})) {
+
+		my $group;
+		if (exists $a->{'{}group'}) {
+		    $self->doError(214,3,'group','<stx:process-self>',
+				   'qname') 
+		      unless $a->{'{}group'}->{Value} =~ /^$ATT_QNAME$/;
+		    $group = $a->{'{}group'}->{Value};
+
+		    my @g = $self->{nsc}->process_element_name($group);
+		    $group = "$g[0]:$g[2]" if $g[0];
+		}
+
+		$self->{c_template}->{_self} = 1;
+
+		push @{$self->{c_template}->{instructions}}, 
+		  [I_P_SELF, $group];
+		#print "COMP: >PROCESS SELF\n";
+	    }
+
+	# <stx:call-procedure> ----------------------------------------
+	} elsif ($el->{LocalName} eq'call-procedure') {
+
+	    if ($self->_allowed($el->{LocalName})) {
+
+		# --- name ---
+		$self->doError(212, 3, '<stx:call-procedure>', 'name')
+		  unless exists $a->{'{}name'};
+
+		$self->doError(214,3,'name','<stx:call-procedure>','qname') 
+		      unless $a->{'{}name'}->{Value} =~ /^$ATT_QNAME$/;
+		my $name = $a->{'{}name'}->{Value};
+
+		my @n = $self->{nsc}->process_element_name($name);
+		$name = "$n[0]:$n[2]" if $n[0];
+
+		# --- group ---
+		my $group;
+		if (exists $a->{'{}group'}) {
+		    $self->doError(214,3,'group','<stx:call-procedure>', 'qname') 
+		      unless $a->{'{}group'}->{Value} =~ /^$ATT_QNAME$/;
+		    $group = $a->{'{}group'}->{Value};
+
+		    my @g = $self->{nsc}->process_element_name($group);
+		    $group = "$g[0]:$g[2]" if $g[0];
+		}
+
+		push @{$self->{c_template}->{instructions}}, 
+		  [I_CALL_PROCEDURE, $name, $group];
+		#print "COMP: >CALL PROCEDURE\n";
 	    }
 
 	# <stx:if> ----------------------------------------
@@ -657,7 +801,7 @@ sub start_element {
 
 	    }
 
-	# <stx:assign> ---------------------------------------- zzz
+	# <stx:assign> ----------------------------------------
 	} elsif ($el->{LocalName} eq 'assign') {
 
 	    if ($self->_allowed($el->{LocalName})) {
@@ -737,9 +881,6 @@ sub end_element {
 
 	    # local variable
 	    if ($self->{c_template}) {
-		# select and content in the same time
-# 		$self->doError(208, 3, 'stx:variable') 
-# 		  if $self->{_variable_select} and $self->{c_template}->{instructions}->[$#{$self->{c_template}->{instructions}}]->[0] != I_VARIABLE_START;
 		
 		push @{$self->{c_template}->{instructions}}, [I_VARIABLE_END];
 		#print "COMP: >VARIABLE_END\n";
@@ -750,10 +891,6 @@ sub end_element {
 	# <stx:assign> ----------------------------------------
 	} elsif ($el->{LocalName} eq 'assign') {
 
-	    # select and content in the same time
-# 	    $self->doError(208, 3, 'stx:assign') 
-# 	      if $self->{_variable_select} and $self->{c_template}->{instructions}->[$#{$self->{c_template}->{instructions}}]->[0] != I_ASSIGN_START;
-		
 	    push @{$self->{c_template}->{instructions}}, [I_ASSIGN_END];
 	    #print "COMP: >ASSIGN_END\n";
 
@@ -765,6 +902,10 @@ sub end_element {
 
 	# <stx:template> ----------------------------------------
 	} elsif ($el->{LocalName} eq 'template') {
+	    $self->{c_template} = undef;
+
+	# <stx:procedure> ----------------------------------------
+	} elsif ($el->{LocalName} eq 'procedure') {
 	    $self->{c_template} = undef;
 
 	# <stx:copy> ----------------------------------------
@@ -853,6 +994,7 @@ sub end_element {
 	$self->{c_template}->{vars}->[0]->{$_} = undef;
 	#print "COMP: >VARIABLE_SCOPE_END $_\n";
     }
+    $self->{nsc}->popContext;
 }
 
 sub characters {
@@ -891,9 +1033,15 @@ sub ignorable_whitespace {
 }
 
 sub start_prefix_mapping {
+    my ($self, $ns) = @_;
+
+    $self->{nsc}->declare_prefix($ns->{Prefix}, $ns->{NamespaceURI});
 }
 
 sub end_prefix_mapping {
+    my ($self, $ns) = @_;
+
+    $self->{nsc}->undeclare_prefix($ns->{Prefix});
 }
 
 sub skipped_entity {
@@ -1066,7 +1214,7 @@ my $s_top_level = [@$s_group, 'options', 'namespace-alias'];
 
 my $s_text_constr = ['text','cdata','value-of','if','else','choose','_text'];
 
-my $s_content_constr = [@$s_text_constr ,'call-template', 'copy',
+my $s_content_constr = [@$s_text_constr ,'call-procedure', 'copy',
 			  'process-attributes', 'process-self','element',
 			  'start-element','end-element', 'processing-instruction',
 			  'comment','variable','param', 'assign','for-each',

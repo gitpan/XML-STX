@@ -4,6 +4,7 @@ default-ignore|01|0|OK
 default-text|02|0|<root >koko text<![CDATA[<&>]]></root>
 default-copy|02|0|<root ><node id="1" >koko</node><!-- comment --> text<![CDATA[<&>]]><?pi pi-content?></root>
 default-stxpath-ns|03|0|OK
+default-stxpath-ns2|04|0|OK
 stxpath-ns|04|0|OK
 cdata|01|0|[<![CDATA[<<cdata-text>>]]>]
 cdata-yes|01|0|[ text1] [<![CDATA[<<cdata-text>>]]>] [ text2]
@@ -16,6 +17,8 @@ template-match2|01|0|root-3node-2node-2node-2
 template-match-position|01|0|<el >root<el >node</el><id >2</id><node > text1</node><cdata ><![CDATA[<<cdata-text>>]]></cdata><text > text2</text></el>
 template-lookup|01|0|root-3
 process-attributes|01|0|<n ><id >1</id></n><n ><id >2</id></n><n ><a0 >B</a0><a1 >A</a1><a3 >C</a3></n>
+process-self|01|0|<a ><b ><c >OK</c></b></a>
+process-combined|01|0|<n >koko(koko){1}[koko]</n><n >mato(mato){2}[mato]</n><n >{B}{A}{C}[]</n>
 groups|01|0|root.1 node.1 node.2 node.3
 groups-named|01|0|root.1 node.1 koko node.2 mato <<cdata-text>> node.3
 groups-named-att|01|0|/1 @id {koko} $id/2 @id {mato} $id/3 @a0 @a1 @a3 $a0 $a1 $a3
@@ -25,6 +28,8 @@ groups-named-att|01|0|/1 @id {koko} $id/2 @id {mato} $id/3 @a0 @a1 @a3 $a0 $a1 $
 if|01|0|<root >n:tT:Nn:t2text(mato)T:Nn::N</root>
 else|01|0|<root >1[2]OK3</root>
 choose|01|0|<root >(1:koko)(2:mato)(other)</root>
+call-procedure|01|0|<a ><b ><c ><d >OK</d><e >OK</e></c></b></a>
+call-procedure2|01|0|<a ><b ><c >1-koko</c><c >2-mato</c><c >3-</c></b></a>
 
 # output --------------------
 
@@ -34,7 +39,7 @@ literal|01|0|<element name="node" >literal text</element>
 literal-avt|01|0|<r avt="1+2" att-node="1" ><lit a1="3" a2="1+2=3" a3="a2/b1" ></lit></r>
 copy|02|0|<root ><node id="1" >koko</node><!-- comment --> text<![CDATA[<&>]]><?pi pi-content?></root>
 value-of|01|0|<root >text-52-5-true</root>
-value-of-att|01|0|12AC
+value-of-att|01|0|1(1)2(1)AC(3)
 element|01|0|<node ><p:el xmlns:p="NS1" ><g0:el xmlns:g0="NS2" ></g0:el></p:el></node>
 element-separate|01|0|<node ><p:el xmlns:p="NS1" ></p:el></node>
 attribute|01|0|<node g0:node="9koko" xmlns:g0="NS" a1="4" ></node>
@@ -42,7 +47,7 @@ comment|01|0|T1<!-- Comment Text:2 -->T2T3
 processing-instruction|01|0|T1<?node PI-text?>T2
 string-value1|01|0| other node types  text1 <<cdata-text>> text2 pi-content
 string-value2|01|0|koko/1|/mato/2|//B|A|C|/
-string-value3|03|0|--
+string-value3|03|0|--|http://test_ns|http://test_ns2|4
 
 # STXPath --------------------
 

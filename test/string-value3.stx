@@ -1,10 +1,21 @@
 <stx:transform version="1.0" 
 	       xmlns:stx="http://stx.sourceforge.net/2002/ns">
 
-  <stx:options strip-space="yes"/>
+  <stx:options strip-space="yes" 
+	       default-stxpath-namespace="http://test_ns"/>
 
   <stx:template match="/">
     <stx:value-of select="concat('-', ., '-')"/>
+    <stx:text>|</stx:text>
+    <stx:process-children/>
   </stx:template>
   
+  <stx:template match="root">
+    <stx:value-of select="namespace::"/>
+    <stx:text>|</stx:text>
+    <stx:value-of select="namespace::foo"/>
+    <stx:text>|</stx:text>
+    <stx:value-of select="count(namespace::* )"/>
+  </stx:template>
+
 </stx:transform>

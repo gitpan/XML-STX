@@ -1,5 +1,13 @@
 Revision history for Perl extension XML::STX.
 
+0.06 January 31, 2003
+	- stx:procedure (@name, @visibility, @new-scope)
+	- stx:call-procedure (@name, @group)
+	- stx:process-self (@group)
+	- added namespace nodes and namespace axis
+	- bug fixes (@*, namespace-uri, group names as QNames, 
+	  string values, process-children)
+
 0.05 January 15, 2003
 	- the first version uploaded to CPAN
 	- string values updated (WD 14 January)

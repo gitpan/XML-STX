@@ -8,7 +8,7 @@
     <node>
       <stx:value-of select="concat('aa', 'bb')"/>
       <stx:text>-</stx:text>
-      <stx:value-of select="concat('name: ', name(), ' ns: ', namespace())"/>
+      <stx:value-of select="concat('name: ', name(), ' ns: ', namespace-uri())"/>
       <stx:text>-</stx:text>
       <stx:value-of select="concat('2*5', concat('=', 2*5))"/>
     </node>

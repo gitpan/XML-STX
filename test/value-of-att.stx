@@ -11,6 +11,9 @@
     <stx:value-of select="@id"/>
     <stx:value-of select="@a1"/>
     <stx:value-of select="@a3"/>
+    <stx:text>(</stx:text>
+    <stx:value-of select="count(@*)"/>
+    <stx:text>)</stx:text>
   </stx:template>
 
 </stx:transform>

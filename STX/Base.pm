@@ -1,8 +1,8 @@
 package XML::STX::Base;
 
-require 5.005_62;
+require 5.005_02;
+BEGIN { require warnings if $] >= 5.006; }
 use strict ('refs', 'subs');
-use warnings;
 use vars qw(@EXPORT);
 use Carp;
 require Exporter;
@@ -18,6 +18,7 @@ require Exporter;
 	      STX_COMMENT_NODE
 	      STX_ATTRIBUTE_NODE
 	      STX_ROOT_NODE
+	      STX_NS_NODE
 
               STX_NODE
               STX_BOOLEAN
@@ -56,6 +57,7 @@ require Exporter;
 	      I_COMMENT_END
 	      I_PI_START
 	      I_PI_END
+              I_CALL_PROCEDURE
 	      
 	      I_IF_START
 	      I_IF_END
@@ -132,6 +134,7 @@ sub I_PI_START(){15;}
 sub I_PI_END(){16;}
 sub I_P_SELF(){17;}
 sub I_P_ATTRIBUTES(){18;}
+sub I_CALL_PROCEDURE(){19;}
 
 sub I_IF_START(){101;}
 sub I_IF_END(){102;}
@@ -151,11 +154,11 @@ $QName = "($NCName:)?$NCName";
 $NCWild = "${NCName}:\\*|\\*:${NCName}";
 $QNWild = "\\*";
 $NODE_TYPE = '((text|comment|processing-instruction|node|cdata)\\(\\))';
-$AXIS_NAME = '(ancestor|parent)::';
+$AXIS_NAME = '(ancestor|parent|namespace)::';
 $NUMBER_RE = '\d+(\\.\d*)?|\\.\d+';
 $DOUBLE_RE = '\d+(\\.\d*)?[eE][+-]?\d+';
 $LITERAL = '\\"[^\\"]*\\"|\\\'[^\\\']*\\\'';
-$FUNCTION = '(boolean|string|number|true|false|not|name|namespace|local-name|prefix|normalize-space|position|get-node|level|starts-with|contains|substring|substring-before|substring-after|string-length|concat|translate|has-child-nodes|count|empty|item-at|sublist)';
+$FUNCTION = '(boolean|string|number|true|false|not|name|namespace-uri|local-name|prefix|normalize-space|position|get-node|level|starts-with|contains|substring|substring-before|substring-after|string-length|concat|translate|has-child-nodes|count|empty|item-at|sublist)';
 
 # --------------------------------------------------
 # error processing
@@ -227,6 +230,7 @@ sub _err_msg {
 	14 => ", or ) expected after function argument (_P), _P found instead",
 	15 => "Incorrect number (_P) of arguments; _P() has _P arguments",
 	16 => "Variable _P not visible",
+	17 => "Namespace nodes can only be associated with elements, _P found",
 
 	# STXPath functions
         101 => "Unknown data type: _P",
@@ -256,7 +260,7 @@ sub _err_msg {
         216 => "Static evaluation failed, _P requires a context",
         217 => "Value of _P attribute (_P) must be _P",
         218 => "_P must follow immediately behind _P (found behind i_P)",
-        219 => "Duplicate name of group: _P",
+        219 => "Duplicate name of _P: _P",
 
 	# Runtime
         501 => "Prefix in <stx:element name=\"_P\"> not declared",
@@ -266,6 +270,7 @@ sub _err_msg {
         505 => "Assignment failed: variable _P not declared in this scope",
         506 => "Position not defined for attributes",
         507 => "Group named '_P' not defined",
+        508 => "Called procedure _P not visible",
 	);
 
     my $msg = $msg{$no};

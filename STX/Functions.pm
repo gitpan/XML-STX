@@ -1,8 +1,8 @@
 package XML::STX::Functions;
 
-require 5.005_62;
+require 5.005_02;
+BEGIN { require warnings if $] >= 5.006; }
 use strict;
-use warnings;
 use XML::STX::Base;
 
 # --------------------------------------------------
@@ -13,7 +13,7 @@ use XML::STX::Base;
 # number()
 # normalize-space()
 # name()
-# namespace()
+# namespace-uri()
 # local-name()
 # prefix()
 # get-node()
@@ -36,7 +36,7 @@ sub F_number($$){
     my ($self, $val) = @_;
     
     # item -> singleton sequence
-    my $seq = (exists $val->[1] and not(ref $val->[1])) ? [$val] : $val;
+    my $seq = ($val->[1] and not(ref $val->[1])) ? [$val] : $val;
 
     if (@{$seq} == 0) {
 	$self->doError('104', 3, 'number');
@@ -69,7 +69,7 @@ sub F_boolean($$){
     my ($self, $val) = @_;
 
     # item -> singleton sequence
-    my $seq = (exists $val->[1] and not(ref $val->[1])) ? [$val] : $val;
+    my $seq = ($val->[1] and not(ref $val->[1])) ? [$val] : $val;
 
     if (@{$seq} == 0) {
 	return [0,STX_BOOLEAN];
@@ -104,7 +104,7 @@ sub F_string($$){
     my ($self, $val) = @_;
 
     # item -> singleton sequence
-    my $seq = (exists $val->[1] and not(ref $val->[1])) ? [$val] : $val;
+    my $seq = ($val->[1] and not(ref $val->[1])) ? [$val] : $val;
 
     if (@{$seq} == 0) {
 	return ['',STX_STRING];
@@ -122,7 +122,8 @@ sub F_string($$){
 		  ? $self->_lookahead()->{Data} : '';
 		return [$look,STX_STRING];
 
-	    } elsif ($seq->[0]->[0]->{Type} == STX_ATTRIBUTE_NODE) {
+	    } elsif ($seq->[0]->[0]->{Type} == STX_ATTRIBUTE_NODE
+		     or $seq->[0]->[0]->{Type} == STX_NS_NODE) {
 		return [$seq->[0]->[0]->{Value},STX_STRING];
 
 	    } elsif ($seq->[0]->[0]->{Type} == STX_TEXT_NODE
@@ -199,8 +200,8 @@ sub F_name($$){
     }
 }
 
-# STRING = namespace(node) --------------------
-sub F_namespace($$){
+# STRING = namespace-uri(node) --------------------
+sub F_namespace_uri($$){
     my ($self, $seq) = @_;
 
     if ($seq->[0] and $seq->[0]->[1] == STX_NODE
@@ -211,7 +212,7 @@ sub F_namespace($$){
 	return [['',STX_STRING]];
 
     } else {
-	$self->doError('105', 3, 'namespace', 
+	$self->doError('105', 3, 'namespace-uri', 
 		       'node-element/attribute', $self->_type($seq));
     }
 }

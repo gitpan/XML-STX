@@ -1,16 +1,16 @@
-require 5.005_62;
+package XML::STX::Stylesheet;
+
+require 5.005_02;
+BEGIN { require warnings if $] >= 5.006; }
 use strict;
-use warnings;
 
 # --------------------------------------------------
-package XML::STX::Stylesheet;
 
 sub new {
     my $class = shift;
 
     my $properties = {
 		      'pass-through' => 0,
-#		      'strict-mode' => 0,
 		      'recognize-cdata' => 1,
 		      'default-stxpath-namespace' => '',
 		      'output-encoding' => undef,
@@ -44,7 +44,6 @@ sub new {
 		      visible => [], # visible templates
 		      groups => {},
 		      vars => [{}], # variables declared in this group
-#		      strict => 0,
 		     }, $class;
     return $self;
 }
@@ -62,12 +61,10 @@ sub new {
 		      tid => $tid,
 		      group => $group,
 		      instructions => [],
-#		      strict => 0,
 		      vars => [{}], # local variables
 		      _attr => 0,
 		      _attr_only => 1,
 		      _self => 0,
-#		      _named => 0,
 		     }, $class;
     return $self;
 }

@@ -1,8 +1,8 @@
 package XML::STX;
 
-require 5.005_62;
+require 5.005_02;
+BEGIN { require warnings if $] >= 5.006; }
 use strict;
-use warnings;
 use vars qw($VERSION);
 use XML::SAX::Base;
 use XML::NamespaceSupport;
@@ -12,7 +12,7 @@ use XML::STX::Compiler;
 use Clone qw(clone);
 
 @XML::STX::ISA = qw(XML::SAX::Base XML::STX::Base);
-$VERSION = '0.05';
+$VERSION = '0.06';
 
 # --------------------------------------------------
 
@@ -256,16 +256,16 @@ sub _start_document {
     $self->{byEnd} = {}; # stack for instructions after process-children
     $self->{OutputStack} = []; # output stack
     $self->{LookUp} = [1]; # lookup for templates
-    $self->{Env} = []; # this is where environment is stacked on p-children
     $self->{SP} = XML::STX::STXPath->new($self);
 
     $self->{ns} = XML::NamespaceSupport->new({ xmlns => 1 });
     $self->{ns_out} = XML::NamespaceSupport->new({ xmlns => 1 });
     $self->{_g_prefix} = 0;
     $self->{_stx_element} = [];
+    $self->{_self} = 0;
 
-    # default NS for STXPath
     $self->{ns}->pushContext;
+    # default NS for STXPath
     if ($self->{Sheet}->{Options}->{'default-stxpath-namespace'}) {
 	$self->{ns}->declare_prefix('#default', 
 		    $self->{Sheet}->{Options}->{'default-stxpath-namespace'});
@@ -316,13 +316,15 @@ sub _start_element {
 	$el->{Attributes}->{$_}->{Index} = $index + 1;
 
 	# default NS
-	$self->{ns}->declare_prefix('#data_default',
- 				    $el->{Attributes}->{$_}->{Value})
-	  if $el->{Attributes}->{$_}->{Name} eq 'xmlns';
+	if ($el->{Attributes}->{$_}->{Name} eq 'xmlns') {
+	    $self->{ns}->declare_prefix('#data_default',
+					$el->{Attributes}->{$_}->{Value});
+
 	# prefixed NS
-	$self->{ns}->declare_prefix($el->{Attributes}->{$_}->{LocalName}, 
-				    $el->{Attributes}->{$_}->{Value})
-	  if $el->{Attributes}->{$_}->{Prefix} eq 'xmlns';
+	} elsif ($el->{Attributes}->{$_}->{Prefix} eq 'xmlns') {
+	    $self->{ns}->declare_prefix($el->{Attributes}->{$_}->{LocalName}, 
+					$el->{Attributes}->{$_}->{Value})
+	}
     }
 
     push @{$self->{Stack}}, $el;
@@ -332,18 +334,20 @@ sub _start_element {
 
 sub _end_element {
     my $self = shift;
-    #print "STX: > _end_element\n";
 
     my $node = $self->{Stack}->[$#{$self->{Stack}}];
+    #print "STX: > _end_element $node->{Name} ($node->{Index})\n";
 
     # run 2nd part of template if any
     if (defined $self->{byEnd}->{$node->{Index}}) {
-	$self->_run_template(0, undef, $node->{Index}, $node);
-	# the 2nd part of template is removed from byEnd stack
-	$self->{byEnd}->{$node->{Index}} = undef;
-	# explicit group is removed
-	$self->{Sheet}->{exGroup}->{$node->{Index} + 1} = undef;
+
+	while ($#{$self->{byEnd}->{$node->{Index}}} > -1) {
+	    $self->_run_template(0, undef, $node->{Index}, $node);
+	    #shift @{$self->{exG}->{$node->{Index} + 1}};
+	}
     }
+    $self->{exG}->{$node->{Index} + 1} = undef;
+    $self->{byEnd}->{$node->{Index}} = undef;
 
     # cleaning counters
     my $index = scalar @{$self->{Stack}};
@@ -425,10 +429,12 @@ sub _comment {
 
 sub _process {
     my $self = shift;
+    #print "STX: process> LookUp $self->{LookUp}->[$#{$self->{LookUp}} - 1]\n";
 
 #     $self->_frameDBG;
 #     $self->_counterDBG;
 #     $self->_nsDBG;
+#     $self->_grpDBG;
 
     if ($self->{LookUp}->[$#{$self->{LookUp}} - 1]) {
 
@@ -446,20 +452,21 @@ sub _process {
 	    # default group
 	    $g = $self->{Sheet}->{dGroup};
 	} else {
-	    my $exG = $self->{Sheet}->{exGroup}->{$node->{Index}};
+	    my $exG = $self->{exG}->{$node->{Index}}->[$#{$self->{exG}->{$node->{Index}}}];
 	    if ($exG) {
 		# explicit group
 		if ($self->{Sheet}->{named_groups}->{$exG}) {
 		    $g = $self->{Sheet}->{named_groups}->{$exG};
 		} else {
 		    $self->doError(507, 2, $exG);
-		    $g = $self->{Stack}->[$#{$self->{Stack}} - 1]->{Group};	    
+		    $g = $self->{Stack}->[$#{$self->{Stack}} - 1]->{Group}->[$#{$self->{Stack}->[$#{$self->{Stack}} - 1]->{Group}}];	    
 		}
 	    } else {
 		# group of the recent matching template
-		$g = $self->{Stack}->[$#{$self->{Stack}} - 1]->{Group};
+		$g = $self->{Stack}->[$#{$self->{Stack}} - 1]->{Group}->[$#{$self->{Stack}->[$#{$self->{Stack}} - 1]->{Group}}];
 	    }
 	}
+	#print "STX: base group $g->{gid}\n";
 
 	my $templates = $self->_match($ns, $node, $g);
 
@@ -467,17 +474,20 @@ sub _process {
 
 	# run the best match template if any
 	if ($templates->[0]) {
-	    $node->{Group} = $templates->[0]->{group};
-	    my $k = exists $templates->[0]->{_pos_key}->{step}->[0] 
+	    $node->{Group} = [$templates->[0]->{group}];
+
+	    my $k = $templates->[0]->{_pos_key}->{step}->[0] 
 	      ? $self->_counter_key($templates->[0]->{_pos_key}->{step}->[0])
 		: '/root';
 	    my $pos = $self->{Counter}->[$#{$self->{Stack}}]->{$k};
+
 	    $self->_run_template(1, $templates, $ns, $node, $pos);
 
         # default rule is applied
 	} else {
 	    #print "STX: default rule\n";
-	    $node->{Group} = $g;
+	    $node->{Group} = [$g];
+
 	    my $t = $self->_get_def_template;
 	    $self->_run_template(1, [$t], $ns, $node);
 	}
@@ -489,21 +499,21 @@ sub _process_attributes {
     #print "STX: processing attributes\n";
     
     # current group
-    # my $g = $self->{Stack}->[$#{$self->{Stack}} - 1]->{Group};
     my $g;
-    my $exG = $self->{Sheet}->{exGroup}->{'a' . $node->{Index}};
+    my $exG = $self->{exG}->{$node->{Index}}->[$#{$self->{exG}->{$node->{Index}}}];
     if ($exG) {
 	# explicit group
 	if ($self->{Sheet}->{named_groups}->{$exG}) {
 	    $g = $self->{Sheet}->{named_groups}->{$exG};
 	} else {
 	    $self->doError(507, 2, $exG);
-	    $g = $self->{Stack}->[$#{$self->{Stack}} - 1]->{Group};	    
+	    $g = $node->{Group}->[$#{$node->{Group}}];
 	}
     } else {
 	# group of the recent matching template
-	$g = $self->{Stack}->[$#{$self->{Stack}} - 1]->{Group};
+	$g = $node->{Group}->[$#{$node->{Group}}];
     }
+    #print "STX: base group $g->{gid}\n";
 
     foreach (keys %{$node->{Attributes}}) {
 	my $templates = $self->_match($ns, $node->{Attributes}->{$_}, $g, 1);
@@ -511,11 +521,15 @@ sub _process_attributes {
 	# run the best match template if any
 	if ($templates->[0]) {
 
-	    $self->{_pos} = undef;
+	    $node->{Attributes}->{$_}->{Group} = [$templates->[0]->{group}];
 
+	    $self->{_pos} = undef;
 	    push @{$self->{Stack}}, $node->{Attributes}->{$_};
+
 	    $self->_run_template(1, $templates, $ns, $node->{Attributes}->{$_}, 1);
+
 	    pop @{$self->{Stack}};
+	    $node->{Attributes}->{$_}->{Group} = undef;
 	    
         # default rule is applied
 	} else {
@@ -524,6 +538,90 @@ sub _process_attributes {
 	    $self->_run_template(1, [$t], $ns, $node);
 	}
     }
+}
+
+sub _process_self {
+    my ($self, $node, $ns, $env) = @_;
+    #print "STX: processing self\n";
+
+    # current group
+    my $g;
+    my $exG = $self->{exG}->{$node->{Index}}->[$#{$self->{exG}->{$node->{Index}}}];
+    if ($exG) {
+	# explicit group
+	if ($self->{Sheet}->{named_groups}->{$exG}) {
+	    $g = $self->{Sheet}->{named_groups}->{$exG};
+	} else {
+	    $self->doError(507, 2, $exG);
+	    $g = $node->{Group}->[$#{$node->{Group}}];   
+	}
+    } else {
+	# group of the recent matching template
+	$g = $node->{Group}->[$#{$node->{Group}}];   
+    }
+    #print "STX: base group $g->{gid}\n";
+    
+    my $templates = $self->_match($ns, $node, $g);
+
+    # excluded templates are excluded
+    my $new_templates = [];
+    foreach my $t (@$templates) {
+	push @$new_templates, $t 
+	  unless grep($t->{tid} == $_, @{$self->{_excluded_templates}});
+    }
+
+    # run the best match template if any sss
+    if ($new_templates->[0]) {
+	push @{$node->{Group}}, $templates->[0]->{group};
+
+	my $k = $new_templates->[0]->{_pos_key}->{step}->[0] 
+	  ? $self->_counter_key($new_templates->[0]->{_pos_key}->{step}->[0])
+	    : '/root';
+	my $pos = $self->{Counter}->[$#{$self->{Stack}}]->{$k};
+
+	$self->_run_template(2, $new_templates, $env, $node);
+
+    # default rule is applied
+    } else {
+	#print "STX: default rule\n";
+	push @{$node->{Group}}, $g;
+	my $t = $self->_get_def_template;
+	$self->_run_template(1, [$t], $ns, $node);
+    }
+    pop @{$node->{Group}};
+}
+
+sub _call_procedure {
+    my ($self, $name, $node, $env) = @_;
+    #print "STX: call procedure: $name\n";
+
+    # current group
+    my $g;
+    my $exG = $self->{exG}->{$node->{Index}}->[$#{$self->{exG}->{$node->{Index}}}];
+    if ($exG) {
+
+	# explicit group
+	if ($self->{Sheet}->{named_groups}->{$exG}) {
+	    $g = $self->{Sheet}->{named_groups}->{$exG};
+	} else {
+	    $self->doError(507, 2, $exG);
+	    $g = $node->{Group}->[$#{$node->{Group}}];
+	}
+    } else {
+	# group of the recent matching template
+	$g = $node->{Group}->[$#{$node->{Group}}];
+    }
+    #print "STX: base group $g->{gid}\n";
+    
+    # procedure
+    my $p = $g->{proc_visible}->{$name};
+
+    $self->doError(508, 3, $name) unless $p;
+
+    # run the template
+    push @{$node->{Group}}, $p->{group};
+    $self->_run_template(2, [$p], $env, $node);
+    pop @{$node->{Group}}, $p->{group};
 }
 
 # matching ----------------------------------------
@@ -544,7 +642,7 @@ sub _match {
 
     if ($self->{Sheet}->{$global}->[0]) {
 	if ($templates->[0]) {
-	    if ($templates->[0]->{_self}) {
+	    if ($self->{_self}) {
 
 		my $templ_p2 = $self->_match_p2($node, $ns, $global);
 		push @$templates, @$templ_p2;
@@ -570,10 +668,11 @@ sub _match_p1 {
     # the same group + public/global children
     foreach my $t (@{$group->{$visible}}) {
 	#print "STX: match visible -> template $t->{tid}\n";
+	#print "STX:  ->self:$self->{_self} complex:$group->{_complex_priority}\n";
 
-	next if ($group->{_complex_priority} or $t->{_self})
-	  and grep($current_p >= $_, @{$t->{priority}});
-	
+	next if grep($current_p >= $_, @{$t->{priority}})
+	  and not($group->{_complex_priority} or $self->{_self});
+
 	my $res = $self->{SP}->match($node, 
 				     $t->{match},
 				     $t->{priority},
@@ -584,9 +683,16 @@ sub _match_p1 {
 	#print "STX: >matching $res->[0] | priority $res->[1]\n";
 
 	if ($res->[0]) {
-	    unshift @$templates, $t;
+
+	    if (($group->{_complex_priority} or $self->{_self}) 
+		and $current_p > $res->[1]) {
+		push @$templates, $t;
+	    } else {
+		unshift @$templates, $t;
+	    }
+	    
 	    $t->{_pos_key} = $res->[2]->[$#{$res->[2]}];
-	    last unless $group->{_complex_priority} or $t->{_self};
+	    last unless $group->{_complex_priority} or $self->{_self};
 	    $current_p = $res->[1] if $current_p < $res->[1];
 	}
     }
@@ -605,9 +711,8 @@ sub _match_p2 {
     foreach my $t (@{$self->{Sheet}->{$global}}) {
 	#print "STX: match global -> template $t->{tid}\n";
 
-	next if ref $t->{priority}
-	  ? grep($current_p >= $_, @{$t->{priority}})
-	    : $current_p >= $t->{priority};
+	next if grep($current_p >= $_, @{$t->{priority}})
+	  and not($self->{Sheet}->{dGroup}->{_complex_priority} or $self->{_self});
 
 	my $res = $self->{SP}->match($node, 
 				     $t->{match},
@@ -619,10 +724,17 @@ sub _match_p2 {
 	#print "STX: >matching $res->[0] | priority $res->[1]\n";
 
 	if ($res->[0]) {
-	    unshift @$templates, $t;
+
+	    if (($self->{Sheet}->{dGroup}->{_complex_priority} or $self->{_self}) 
+		and $current_p > $res->[1]) {
+		push @$templates, $t;
+	    } else {
+		unshift @$templates, $t;
+	    }
+	    
 	    $t->{_pos_key} = $res->[2]->[$#{$res->[2]}];
 	    last unless $self->{Sheet}->{dGroup}->{_complex_priority} 
-	      or $t->{_self};
+	      or $self->{_self};
 	    $current_p = $res->[1] if $current_p < $res->[1];
 	}
     }
@@ -634,25 +746,46 @@ sub _match_p2 {
 
 # run template instructions
 sub _run_template {
-    my ($self, $new, $templates, $ns, $c_node, $position) = @_;
+    my ($self, $ctx, $templates, $i_ns, $c_node, $position) = @_;
     my $t;         # template to be run
     my $start = 0; # the first instruction to be processed
-    my $env;       # environment (condition stack, etc.)
-    if ($new) {
-	$t = $templates->[0];
-	$env = { condition => [1], position => $position };
-	$self->{position} = $position;
+    my $env;       # environment (ns, condition stack, etc.)
+    my $ns;        # namespaces
+    my @lAhead = @{$self->{lookahead}};
 
-    } else {
-	$env = pop @{$self->{Env}};
+    # new template
+    if ($ctx == 1) {
+	$t = $templates->[0];
+	$env = { condition => [1], 
+		 position => $position, 
+		 ns => $i_ns,
+		 lookahead => \@lAhead,
+	       };
+	$self->{position} = $position;
+	$self->{_lAhead} = \@lAhead;
+	$ns = $i_ns;
+
+    # self & procedures
+    } elsif ($ctx == 2) {
+	$t = $templates->[0];
+	$env = $i_ns;
 	$self->{position} = $env->{position};
-	$t = $self->{byEnd}->{$ns}->[0];
-	$start = $self->{byEnd}->{$ns}->[1];
-	$ns = $self->{byEnd}->{$ns}->[2];
+	$self->{_lAhead} = $env->{lookahead};
+	$ns = $env->{ns};
+
+    # 2nd part of template
+    } else {
+	my $byEnd = shift @{$self->{byEnd}->{$i_ns}};
+	$t = $byEnd->[0];
+	$start = $byEnd->[1];
+	$env = $byEnd->[2];
+	$self->{position} = $env->{position};
+	$self->{_lAhead} = $env->{lookahead};
+	$ns = $env->{ns};
     }
 
     # new variables on recursion
-    if ($t->{'new-scope'} and $new) {
+    if ($t->{'new-scope'} and ($ctx == 1)) {
 	push @{$t->{group}->{vars}}, {};
 
 	foreach (keys %{$t->{group}->{vars}->[$#{$t->{group}->{vars}}-1]}) {
@@ -666,7 +799,7 @@ sub _run_template {
 	}
     }
     # new local variables
-    push @{$t->{vars}}, {} if $new;
+    push @{$t->{vars}}, {} if $ctx == 1;
 
     #print "STX: running template $t->{tid}\n";
     
@@ -760,7 +893,7 @@ sub _run_template {
 	} elsif ($i->[0] == I_ELEMENT_END) {
 	    $out = $self->_send_element_start($out) if exists $out->{Name};
 
-	    if (exists $i->[1]) {
+	    if ($i->[1]) {
 		$out = $self->_resolve_element($i);
 
 	    } else {
@@ -769,10 +902,10 @@ sub _run_template {
 	    pop @{$self->{_stx_element}};
 	    $out = $self->_send_element_end($out);
 
-	# I_ATTRIBUTE_START ---------------------------------------- xxx
+	# I_ATTRIBUTE_START ----------------------------------------
 	} elsif ($i->[0] == I_ATTRIBUTE_START) {
 
-	    my $at = $self->_resolve_element($i);
+	    my $at = $self->_resolve_element($i, 1); # aflag set
 	    my $nsuri = $at->{NamespaceURI} ? $at->{NamespaceURI} : '';
 	    $out->{Attributes}->{"{$nsuri}$at->{LocalName}"} = $at;
 
@@ -797,7 +930,8 @@ sub _run_template {
 							   STX_STRING]]);
 		my $nsuri = $self->{_TTO}->{NamespaceURI} 
 		  ? $self->{_TTO}->{NamespaceURI} : '';
-		$out->{Attributes}->{"{$nsuri}$self->{_TTO}->{LocalName}"}->{Value} = $val->[0]->[0];
+		$out->{Attributes}->{"{$nsuri}$self->{_TTO}->{LocalName}"}->{Value} 
+		  = $val->[0]->[0];
 
 		$self->{_TTO} = undef;
 		$self->{_text_cache} = undef;
@@ -809,13 +943,14 @@ sub _run_template {
 	    $out = $self->_send_element_start($out) if exists $out->{Name};
 
 	    my $fi = $c_node->{Index};
-	    # pointer to the template and the number of the next
-	    # instruction is put to 'byEnd' stack
-	    $self->{byEnd}->{$fi} = [$t, $j+1, $ns];
-	    $self->{LookUp}->[$#{$self->{LookUp}}] = 1;
-	    push @{$self->{Env}}, $env;
+	    # pointer to the template, the number of the next
+	    # instruction, and environment is put to 'byEnd' stack
 
-	    $self->{Sheet}->{exGroup}->{$fi + 1} = $i->[1] ? $i->[1] : undef;
+	    $self->{byEnd}->{$fi} = [[$t, $j+1, $env]];
+	    $self->{LookUp}->[$#{$self->{LookUp}}] = 1;
+
+	    my $exg = $i->[1] ? $i->[1] : undef;
+	    $self->{exG}->{$fi + 1} = [$exg];
 	    $children = 1;
 	    last;
 
@@ -824,9 +959,61 @@ sub _run_template {
 	    next unless $c_node->{Type} == STX_ELEMENT_NODE;
 	    $out = $self->_send_element_start($out) if exists $out->{Name};
 
-	    $self->{Sheet}->{exGroup}->{'a' . $c_node->{Index}} 
-	      = $i->[1] ? $i->[1] : undef;
+	    my $exg = $i->[1] ? $i->[1] : undef;
+	    push @{$self->{exG}->{$c_node->{Index}}}, $exg;
+
 	    $self->_process_attributes($c_node, $ns);
+
+	    pop @{$self->{exG}->{$c_node->{Index}}};
+
+	# I_P_SELF ----------------------------------------
+	} elsif ($i->[0] == I_P_SELF) {
+	    $out = $self->_send_element_start($out) if exists $out->{Name};
+
+	    $self->{_self} = 1;
+
+	    # explicit group
+	    my $exg = $i->[1] ? $i->[1] : undef;
+	    push @{$self->{exG}->{$c_node->{Index}}}, $exg;
+
+	    #excluded templates
+	    if (ref $self->{_excluded_templates}) {
+		push @{$self->{_excluded_templates}}, $t->{tid};
+	    } else {
+		$self->{_excluded_templates} = [$t->{tid}];
+	    }
+
+	    $self->_process_self($c_node, $ns, $env);
+
+	    # process-children has been called inside
+ 	    if ($self->{byEnd}->{$c_node->{Index}}) {
+ 		push @{$self->{byEnd}->{$c_node->{Index}}}, [$t, $j+1, $env];
+ 		$children = 1;
+ 		last;
+ 	    }
+
+	    pop @{$self->{exG}->{$c_node->{Index}}};
+	    pop @{$self->{_excluded_templates}};
+	    $self->{_self} = 0;
+
+	# I_CALL_PROCEDURE ----------------------------------------
+	} elsif ($i->[0] == I_CALL_PROCEDURE) {
+	    $out = $self->_send_element_start($out) if exists $out->{Name};
+	    
+	    # explicit group
+	    my $exg = $i->[2] ? $i->[2] : undef;
+	    push @{$self->{exG}->{$c_node->{Index}}}, $exg;
+
+	    $self->_call_procedure($i->[1], $c_node, $env);
+
+	    # process-children has been called inside
+ 	    if ($self->{byEnd}->{$c_node->{Index}}) {
+ 		push @{$self->{byEnd}->{$c_node->{Index}}}, [$t, $j+1, $env];
+ 		$children = 1;
+ 		last;
+ 	    }
+
+	    pop @{$self->{exG}->{$c_node->{Index}}};
 
 	# I_CHARACTERS ----------------------------------------
 	} elsif ($i->[0] == I_CHARACTERS) {
@@ -1217,7 +1404,7 @@ sub _generate_prefix {
 }
 
 sub _resolve_element {
-    my ($self, $i) = @_;
+    my ($self, $i, $aflag) = @_;
 
     my $out = {};
     my $qname = $self->_expand($i->[1]);
@@ -1248,13 +1435,13 @@ sub _resolve_element {
 		
     # namespace not defined	
     } else {
-	my @ns = $self->{ns}->process_element_name($qname);
+	my @ns = $aflag ? $self->{ns}->process_attribute_name($qname) 
+	  : $self->{ns}->process_element_name($qname);
 	$self->doError(501, 3, $qname)
 	  unless @ns;
-
 	$out->{Name} = $qname;
-	$out->{NamespaceURI} = $ns[0];
-	$out->{Prefix} = $ns[1];
+	$out->{NamespaceURI} = $ns[0] if $ns[0];
+	$out->{Prefix} = $ns[1] if $ns[1];
 	$out->{LocalName} = $ns[2];
     }
     return $out;
@@ -1347,7 +1534,7 @@ sub _frameDBG {
     my $self = shift;
 
     my $index = scalar @{$self->{Stack}} - 1;
-    print "STACK:$index ";
+    print "===STACK:$index ";
     foreach (@{$self->{Stack}}) {
 	if ($_->{Type} == STX_ELEMENT_NODE) {
 	    print "/", $_->{Name};	    
@@ -1394,9 +1581,26 @@ sub _nsDBG {
     my @prefixes = $self->{ns}->get_prefixes;
     print "PREFIXES: ", join("|",@prefixes), "\n";
 
+#     foreach (@prefixes) {
+# 	my $uri = $self->{ns}->get_uri($_);
+# 	print " >$_:$uri\n";
+#     }
+
     my @prefixes2 = $self->{ns_out}->get_prefixes;
     print "RESULT PREFIXES: ", join("|",@prefixes2), "\n";
+}
 
+sub _grpDBG {
+    my $self = shift;
+
+    print "exG: ";
+    foreach my $frm (@{$self->{Stack}}) {
+	print "/";
+	foreach (@{$self->{exG}->{$frm->{Index}}}) {
+	    print "{$_}";
+	}
+    }
+    print "\n";
 }
 
 1;

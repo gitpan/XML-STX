@@ -16,7 +16,7 @@
 	<stx:value-of select="local-name(get-node(2))"/>
       </stx:attribute>
       <stx:attribute name="namespace">
-	<stx:value-of select="namespace(get-node(2))"/>
+	<stx:value-of select="namespace-uri(get-node(2))"/>
       </stx:attribute>
     </node>
   </stx:template>
