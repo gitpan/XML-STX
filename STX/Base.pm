@@ -93,6 +93,8 @@ require Exporter;
 	      I_WITH_PARAM_START
 	      I_WITH_PARAM_END
 	      I_PARAMETER_START
+              I_FOR_EACH_ITEM
+              I_WHILE
 
 	      $NCName
 	      $QName
@@ -191,6 +193,8 @@ sub I_WITH_PARAM_END(){118;}
 sub I_PARAMETER_START(){119;}
 sub I_RES_DOC_START(){120;}
 sub I_RES_DOC_END(){121;}
+sub I_FOR_EACH_ITEM(){122};
+sub I_WHILE(){123};
 
 # tokens
 $NCName = '[A-Za-z_][\w\\.\\-]*';
@@ -217,11 +221,11 @@ sub doError {
 
     my $orig;
     if ($no == 1)      { $orig = 'STXPath Tokenizer'   } 
-    elsif ($no < 100)  { $orig = 'STXPath Analyzer'    }
+    elsif ($no < 100)  { $orig = 'STXPath Evaluator'    }
     elsif ($no < 200)  { $orig = 'STXPath Function'    }
     elsif ($no < 500)  { $orig = 'Stylesheet Parser' }
-    elsif ($no < 1000) { $orig = 'STX Runtime Engine'  }
-    else               { $orig = 'Parser'}
+    elsif ($no < 1000) { $orig = 'Runtime Engine'  }
+    else               { $orig = 'XML Parser'}
 
     my $msg = $self->_err_msg($no, @params);
 
@@ -292,6 +296,7 @@ sub _err_msg {
         106 => "Invalid position: item _P requested from sequence of _P items",
         107 => "Invalid position: item _P requested. Indexes start from 1",
         108 => "Invalid argument to _P() function: _P",
+        109 => "Invalid string-pad count: _P",
 
 	# Stylesheet parser
         201 => "Chunk after the end of document element",
@@ -315,6 +320,7 @@ sub _err_msg {
         219 => "Duplicate name of _P: _P",
         220 => "Duplicate name of procedure _P in precedence category _P",
         221 => "Prefix _P used in _P not declared",
+        222 => "Test expression for <stx:while> contains no variable (_P)",
 
 	# Runtime
         501 => "Prefix in <stx:element name=\"_P\"> not declared",

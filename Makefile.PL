@@ -38,6 +38,6 @@ WriteMakefile(
 			    XML::NamespaceSupport => 1.07,
 			    Clone => 0.13,
 			    POSIX => 1.00},
-    'EXE_FILES'	        => [ qw(stxcmd.pl) ],
+    'EXE_FILES'	        => [ qw(stxcmd.pl stxview.pl) ],
     dist	        => {COMPRESS => 'gzip', SUFFIX => 'tar.gz'},
 );

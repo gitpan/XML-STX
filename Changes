@@ -1,5 +1,16 @@
 Revision history for Perl extension XML::STX.
 
+0.42 October 10, 2003
+	- stx:for-each-item (@name, @select)
+	- stx:while (@test)
+	- stx:while infinite loop protection (static expression 
+	  checks, repetition limit)
+	- added STX Viewer - stxview.pl
+	  (Gtk+ based visual browser for STX transforms)
+	- kept track of node identity
+	- added STXPath functions: upper-case, lower-case, 
+	  string-pad, index-of
+
 0.41 July 3, 2003
 	- stx:process-document (@href, @base, @group)
 	- stx:result-document (@href)

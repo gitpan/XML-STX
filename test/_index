@@ -1,6 +1,6 @@
 # catched warnings and recoverable errors
 
-$ERRORS 4 1 0
+$ERRORS 5 1 0
 
 # options --------------------
 
@@ -46,6 +46,12 @@ call-procedure|01|0|<a ><b ><c ><d >OK</d><e >OK</e></c></b></a>
 call-procedure2|01|0|<a ><b ><c >1-koko</c><c >2-mato</c><c >3-</c></b></a>
 call-procedure3|01|0|<a ><b >p1</b><b >p1</b><b >p1</b><r >3</r></a>
 call-procedure4|01|0|OK1OK2OK3
+for-each-item1|01|0|<root ><i >abckoko</i><i >abcmato</i><i >abc</i></root>
+for-each-item2|01|0|<root ><i ><j >1a0</j><j >1b0</j></i><i ><j >2a0</j><j >2b0</j></i><i ><j >3a0</j><j >3b0</j></i></root>
+while1|01|0|<root >0123456789</root>
+while2|01|0|<root ><w >0<i >a1</i><i >b2</i></w><w >2<i >a3</i><i >b4</i></w><w >4<i >a5</i><i >b6</i></w></root>
+while3|01|0|<root ><w >0-1M</w><w >1-2M</w><w >2-3M</w><w >3-4M</w><w >4-5M</w><w >5-6M</w></root>
+while4|01|0|<root ><w >0-1M</w></root>
 
 # output --------------------
 
@@ -89,9 +95,12 @@ stxpath-count|01|0|<node >3:3-5:5-1:1-0:0</node>
 stxpath-empty|01|0|<node >false:false-true:true</node>
 stxpath-exists|01|0|<node >true:true-false:false</node>
 stxpath-item-at|01|0|<node >b:b-mato:</node>
+stxpath-index-of|01|0|<node >3::2 5:1 4[2][1][]</node>
 stxpath-subsequence|01|0|<node >5;3:c-e 5;2:b-c</node>
 stxpath-insert-before|01|0|<node >z a b c:z a b c:a z b c:a b z c:a b c z/a b c:z/z:a b c/z a b c:a b c z</node>
 stxpath-remove|01|0|<node >a b c:b c:a c:a b:a b c/a b c//a b c:a b c</node>
+stxpath-case|01|0|<root >ABCD0-abcd0</root>
+stxpath-string-pad|01|0|<root >XMLQueryXMLQuery-aaaa-</root>
 stxpath-node-kind|01|0|<document nm="" ><element nm="root" ><element nm="node" ><text nm="" ></text></element><element nm="node" ><text nm="" ></text></element><comment nm="" ></comment><text nm="" ></text><cdata nm="" ></cdata><text nm="" ></text><processing-instruction nm="pi" ></processing-instruction><element nm="node" >attribute</element></element></document>
 stxpath-normalize-space|01|0|<root >ko:koko:ko ko ma:koko</root>
 stxpath-aggregate|01|0|<node >9.8:0/2.45:/-1:1/5:100</node>
@@ -114,10 +123,12 @@ param-template4|01|0|<root ><b >3:foo-n1::6:koko</b></root>
 param-template5|01|0|<root ><p >3:foo-n1::6:koko</p></root>
 
 # includes --------------------
+
 include1|01|0|Node[id=1]Node[id=2]Node[a0=B][a1=A][a3=C]
 include-params|01|top1=d1|d1d2Node1[id=1]Node2[id=2]Node3[a0=B]3[a1=A]3[a3=C]
 
 # multiple I/O --------------------
+
 process-document1|02|0|<r ><n >1</n><r ><n >1</n><n >2</n><n >3</n></r></r>
 process-document2|02|0|<r ><n >1</n><er ><en >1</en><en >2</en><en>3</en></er></r>
 process-document3|07|0|<d ><l ><r ><n >1</n><n >2</n><n >3</n></r><r ><n >1</n></r></l></d>

@@ -6,10 +6,10 @@ use strict;
 use vars qw($VERSION);
 use XML::STX::TrAX;
 use XML::STX::Runtime;
-use XML::STX::Compiler;
+use XML::STX::Parser;
 
 @XML::STX::ISA = qw(XML::STX::TrAX);
-$VERSION = '0.41';
+$VERSION = '0.42';
 
 # --------------------------------------------------
 
@@ -32,10 +32,10 @@ sub new {
 sub get_stylesheet {
     my ($self, $parser, $uri) = @_;
 
-    my $comp = XML::STX::Compiler->new();
-    $comp->{DBG} = $self->{DBG};
+    my $p = XML::STX::Parser->new();
+    $p->{DBG} = $self->{DBG};
 
-    $parser->{Handler} = $comp;
+    $parser->{Handler} = $p;
     return $parser->parse_uri($uri);
 }
 
@@ -125,14 +125,14 @@ and associate drivers/handlers with input/output channels.
  use SAX2Handler;
 
  $stx = XML::STX->new();
- $comp = XML::STX::Compiler->new();
- $parser_t = SAX2Parser->new(Handler => $comp);
- $stylesheet =  $parser_t->parse_uri($templ_uri);
+ $stx_parser = XML::STX::Parser->new();
+ $xml_parser1 = SAX2Parser->new(Handler => $stx_parser);
+ $stylesheet =  $xml_parser1->parse_uri($templ_uri);
 
  $writer = XML::SAX::Writer->new();
  $stx = XML::STX->new(Handler => $writer, Sheet => $stylesheet );
- $parser = SAX2Parser->new(Handler => $stx);
- $parser->parse_uri($data_uri);
+ $xml_parser2 = SAX2Parser->new(Handler => $stx);
+ $xml_parser2->parse_uri($data_uri);
 
 =head2 Legacy API (deprecated)
 

@@ -1,4 +1,4 @@
-package XML::STX::Compiler;
+package XML::STX::Parser;
 
 require 5.005_02;
 BEGIN { require warnings if $] >= 5.006; }
@@ -8,7 +8,7 @@ use XML::STX::Stylesheet;
 use XML::STX::Buffer;
 use Clone qw(clone);
 
-@XML::STX::Compiler::ISA = qw(XML::STX::Base);
+@XML::STX::Parser::ISA = qw(XML::STX::Base);
 
 my $ATT_NUMBER = '\d+(\\.\d*)?|\\.\d+';
 my $ATT_URIREF = '[a-z][\w\;\/\?\:\@\&\=\+\$\,\-\_\.\!\~\*\'\(\)\%]+';
@@ -34,6 +34,7 @@ sub start_document {
 
     $self->{e_stack} ||= [];
     $self->{g_stack} ||= [];
+    $self->{c_template} ||= [];
     $self->{nsc} ||= XML::NamespaceSupport->new({ xmlns => 1 });
 }
 
@@ -182,17 +183,17 @@ sub start_element {
 							   $self->{URI});
 
 		# nested compiler inherits properties from the current one
- 		my $iComp = XML::STX::Compiler->new({include => 1});
- 		$iComp->{Sheet} = $self->{Sheet};
-		$iComp->{e_stack} = $self->{e_stack};
-		$iComp->{g_stack} = $self->{g_stack};
-		$iComp->{nsc} = $self->{nsc};
- 		$iComp->{DBG} = $self->{DBG};
- 		$iComp->{URIResolver} = $self->{URIResolver};
- 		$iComp->{ErrorListener} = $self->{ErrorListener};
- 		$iComp->{URI} = $self->{URI};
+ 		my $iP = XML::STX::Parser->new({include => 1});
+ 		$iP->{Sheet} = $self->{Sheet};
+		$iP->{e_stack} = $self->{e_stack};
+		$iP->{g_stack} = $self->{g_stack};
+		$iP->{nsc} = $self->{nsc};
+ 		$iP->{DBG} = $self->{DBG};
+ 		$iP->{URIResolver} = $self->{URIResolver};
+ 		$iP->{ErrorListener} = $self->{ErrorListener};
+ 		$iP->{URI} = $self->{URI};
 
- 		$source->{XMLReader}->{Handler} = $iComp;
+ 		$source->{XMLReader}->{Handler} = $iP;
  		$source->{XMLReader}->parse_uri($source->{SystemId});
 	    }
 
@@ -482,7 +483,7 @@ sub start_element {
 		#print "COMP: >matching $t->{match}\n";
 		$g_stack_top->{templates}->{$self->{Sheet}->{next_tid}} = $t;
 
-		$self->{c_template} = $t;
+		push @{$self->{c_template}}, $t;
 		$self->{Sheet}->{next_tid}++;
 	    }
 
@@ -566,7 +567,7 @@ sub start_element {
 		#print "COMP: >name $p->{name}\n";
 		$g_stack_top->{procedures}->{$self->{Sheet}->{next_tid}} = $p;
 
-		$self->{c_template} = $p;
+		push @{$self->{c_template}}, $p;
 		$self->{Sheet}->{next_tid}++;
 	    }
 
@@ -585,7 +586,7 @@ sub start_element {
 		    $group = $self->_expand_qname($group);
 		}
 
-		push @{$self->{c_template}->{instructions}}, 
+		push @{$self->{c_template}->[-1]->{instructions}}, 
 		  [I_P_CHILDREN_START, $group];
 		#print "COMP: >PROCESS_CHILDREN_START\n";
 	    }
@@ -605,7 +606,7 @@ sub start_element {
 		    $group = $self->_expand_qname($group);
 		}
 
-		push @{$self->{c_template}->{instructions}}, 
+		push @{$self->{c_template}->[-1]->{instructions}}, 
 		  [I_P_ATTRIBUTES_START, $group];
 		#print "COMP: >PROCESS ATTRIBUTES START\n";
 	    }
@@ -625,9 +626,9 @@ sub start_element {
 		    $group = $self->_expand_qname($group);
 		}
 
-		$self->{c_template}->{_self} = 1;
+		$self->{c_template}->[-1]->{_self} = 1;
 
-		push @{$self->{c_template}->{instructions}}, 
+		push @{$self->{c_template}->[-1]->{instructions}}, 
 		  [I_P_SELF_START, $group];
 		#print "COMP: >PROCESS SELF START\n";
 	    }
@@ -656,7 +657,7 @@ sub start_element {
 		    $group = $self->_expand_qname($group);
 		}
 
-		push @{$self->{c_template}->{instructions}}, 
+		push @{$self->{c_template}->[-1]->{instructions}}, 
 		  [I_CALL_PROCEDURE_START, $name, $group];
 		#print "COMP: >CALL PROCEDURE START\n";
 	    }
@@ -670,7 +671,7 @@ sub start_element {
 		  unless exists $a->{'{}test'};
 
 		my $expr = $self->tokenize($a->{'{}test'}->{Value});
-		push @{$self->{c_template}->{instructions}},
+		push @{$self->{c_template}->[-1]->{instructions}},
 		  [I_IF_START, $expr];
 		#print "COMP: >IF\n";
 	    }
@@ -680,11 +681,11 @@ sub start_element {
 
 	    if ($self->_allowed($el->{LocalName})) {
 
-		my $last = $self->{c_template}->{instructions}->[-1]->[0];
+		my $last = $self->{c_template}->[-1]->{instructions}->[-1]->[0];
 		$self->doError(218, 3, 'stx:else', 'stx:if', $last) 
 		  if $last != I_IF_END;
 
-		push @{$self->{c_template}->{instructions}}, [I_ELSE_START];
+		push @{$self->{c_template}->[-1]->{instructions}}, [I_ELSE_START];
 		#print "COMP: >ELSE\n";
 	    }
 
@@ -708,7 +709,7 @@ sub start_element {
 		  unless exists $a->{'{}test'};
 
 		my $expr = $self->tokenize($a->{'{}test'}->{Value});
-		push @{$self->{c_template}->{instructions}},
+		push @{$self->{c_template}->[-1]->{instructions}},
 		  [I_ELSIF_START, $expr];
 		#print "COMP: >WHEN\n";
 	    }
@@ -718,11 +719,11 @@ sub start_element {
 
 	    if ($self->_allowed($el->{LocalName})) {
 
- 		my $last = $self->{c_template}->{instructions}->[-1]->[0];
+ 		my $last = $self->{c_template}->[-1]->{instructions}->[-1]->[0];
  		$self->doError(218, 3, 'stx:otherwise', 'stx:when', $last)
 		  if $last != I_ELSIF_END;
 
-		push @{$self->{c_template}->{instructions}}, [I_ELSE_START];
+		push @{$self->{c_template}->[-1]->{instructions}}, [I_ELSE_START];
 		#print "COMP: >OTHERWISE\n";
 	    }
 
@@ -735,14 +736,14 @@ sub start_element {
 		  unless exists $a->{'{}select'};
 		
 		$self->doError(213, 3, 'select', '<stx:value-of>')
-		  if $a->{'{}select'}->{Value} =~ /\{|\}$/;
+		  if $a->{'{}select'}->{Value} =~ /\{|\}/;
 
 		my $expr = $self->tokenize($a->{'{}select'}->{Value});
 
 		my $sep = exists $a->{'{}separator'} 
 		  ? $self->_avt($a->{'{}separator'}->{Value}) : ' ';
 
-		push @{$self->{c_template}->{instructions}},
+		push @{$self->{c_template}->[-1]->{instructions}},
 		  [I_CHARACTERS, $expr, $sep];
 		#print "COMP: >CHARACTER\n";
 	    }
@@ -764,7 +765,7 @@ sub start_element {
 		$attributes = $a->{'{}attributes'}->{Value};
 		}
 		
-		push @{$self->{c_template}->{instructions}}, 
+		push @{$self->{c_template}->[-1]->{instructions}}, 
 		  [I_COPY_START, $attributes];
 		#print "COMP: >COPY_START $attributes\n";
 	    }
@@ -783,7 +784,7 @@ sub start_element {
 		my $ns = exists $a->{'{}namespace'}
 		  ? $self->_avt($a->{'{}namespace'}->{Value}) : undef;
 
-		push @{$self->{c_template}->{instructions}},
+		push @{$self->{c_template}->[-1]->{instructions}},
 		  [I_ELEMENT_START, $qn, $ns, clone($self->{nsc})];
 		#print "COMP: >ELEMENT_START\n";
 	    }
@@ -801,7 +802,7 @@ sub start_element {
 		my $ns = exists $a->{'{}namespace'}
 		  ? $self->_avt($a->{'{}namespace'}->{Value}) : undef; 
 
-		push @{$self->{c_template}->{instructions}},
+		push @{$self->{c_template}->[-1]->{instructions}},
 		  [I_ELEMENT_END, $qn, $ns, clone($self->{nsc})];
 		#print "COMP: >ELEMENT_END\n";
 	    }
@@ -812,7 +813,7 @@ sub start_element {
 	    if ($self->_allowed($el->{LocalName})) {
 		
 		my $ok;
-		my $insts = $self->{c_template}->{instructions};
+		my $insts = $self->{c_template}->[-1]->{instructions};
 		for (my $i = 0; $i < @$insts; $i++) {
 
 		    last if $insts->[$#$insts - $i]->[0] == I_ATTRIBUTE_END
@@ -836,7 +837,7 @@ sub start_element {
 		  $self->tokenize($a->{'{}select'}->{Value}) : undef;
 
 		$self->{_attribute_select} = $sel;
-		push @{$self->{c_template}->{instructions}},
+		push @{$self->{c_template}->[-1]->{instructions}},
 		  [I_ATTRIBUTE_START, $qn, $ns, clone($self->{nsc}), $sel];
 		#print "COMP: >ATTRIBUTE_START\n";
 	    }
@@ -851,7 +852,7 @@ sub start_element {
 
 	    if ($self->_allowed($el->{LocalName})) {
 
-		push @{$self->{c_template}->{instructions}}, 
+		push @{$self->{c_template}->[-1]->{instructions}}, 
 		  [I_CDATA_START];
 		#print "COMP: >CDATA_START\n";
 	    }
@@ -861,7 +862,7 @@ sub start_element {
 
 	    if ($self->_allowed($el->{LocalName})) {
 		
-		push @{$self->{c_template}->{instructions}}, 
+		push @{$self->{c_template}->[-1]->{instructions}}, 
 		  [I_COMMENT_START];
 		#print "COMP: >COMMENT_START\n";
 	    }
@@ -876,7 +877,7 @@ sub start_element {
 
 		my $target = $self->_avt($el->{Attributes}->{'{}name'}->{Value});
 
-		push @{$self->{c_template}->{instructions}}, 
+		push @{$self->{c_template}->[-1]->{instructions}}, 
 		  [I_PI_START, $target];
 		#print "COMP: >PI_START\n";
 	    }
@@ -899,7 +900,7 @@ sub start_element {
 		my $default_select;
 		if (exists $a->{'{}select'}) {
 		    $self->doError(213, 3, 'select', '<stx:variable>')
-		      if $a->{'{}select'}->{Value} =~ /^\{|\}$/;
+		      if $a->{'{}select'}->{Value} =~ /^\{|\}/;
 		    $select = $self->tokenize($a->{'{}select'}->{Value});
 		    $default_select = 0;
 		} else {
@@ -910,16 +911,16 @@ sub start_element {
 		$self->{_variable_select} = $select;
 
 		# local variable ------------------------------
-		if ($self->{c_template}) {
+		if ($self->{c_template}->[0]) {
 
 		    # variable already declared
 		    $self->doError(211, 3, 'Local variable', "\'$name\'") 
-		      if exists $self->{c_template}->{vars}->[0]->{$name};
+		      if exists $self->{c_template}->[-1]->{vars}->[0]->{$name};
 
 		    push @{$e_stack_top->{vars}}, $name;
-		    $self->{c_template}->{vars}->[0]->{$name} = [];
+		    $self->{c_template}->[-1]->{vars}->[0]->{$name} = [];
 
-		    push @{$self->{c_template}->{instructions}}, 
+		    push @{$self->{c_template}->[-1]->{instructions}}, 
 		      [I_VARIABLE_START, $name, $select, $default_select];
 		    #print "COMP: >VARIABLE_START\n";
 
@@ -971,7 +972,7 @@ sub start_element {
 		my $default_select;
 		if (exists $a->{'{}select'}) {
 		    $self->doError(213, 3, 'select', '<stx:param>')
-		      if $a->{'{}select'}->{Value} =~ /^\{|\}$/;
+		      if $a->{'{}select'}->{Value} =~ /^\{|\}/;
 		    $select = $self->tokenize($a->{'{}select'}->{Value});
 		    $default_select = 0;
 		} else {
@@ -992,16 +993,16 @@ sub start_element {
 		$self->{_variable_select} = $select;
 
 		# local parameter ------------------------------
-		if ($self->{c_template}) {
+		if ($self->{c_template}->[0]) {
 
 		    # parameter already declared
 		    $self->doError(211, 3, 'Local parameter', "\'$name\'") 
-		      if exists $self->{c_template}->{vars}->[0]->{$name};
+		      if exists $self->{c_template}->[-1]->{vars}->[0]->{$name};
 
 		    push @{$e_stack_top->{vars}}, $name;
-		    $self->{c_template}->{vars}->[0]->{$name} = [];
+		    $self->{c_template}->[-1]->{vars}->[0]->{$name} = [];
 
-		    push @{$self->{c_template}->{instructions}}, 
+		    push @{$self->{c_template}->[-1]->{instructions}}, 
 		      [I_PARAMETER_START, $name, $select, $default_select, $req];
 		    #print "COMP: >PARAMETER_START\n";
 
@@ -1046,7 +1047,7 @@ sub start_element {
 		my $default_select;
 		if (exists $a->{'{}select'}) {
 		    $self->doError(213, 3, 'select', '<stx:with-param>')
-		      if $a->{'{}select'}->{Value} =~ /^\{|\}$/;
+		      if $a->{'{}select'}->{Value} =~ /^\{|\}/;
 		    $select = $self->tokenize($a->{'{}select'}->{Value});
 		    $default_select = 0;
 		} else {
@@ -1054,7 +1055,7 @@ sub start_element {
 		    $default_select = 1;
 		}
 		
-		push @{$self->{c_template}->{instructions}}, 
+		push @{$self->{c_template}->[-1]->{instructions}}, 
 		  [I_WITH_PARAM_START, $name, $select, $default_select];
 		#print "COMP: >WITH_PARAM\n";
 	    }
@@ -1076,13 +1077,13 @@ sub start_element {
 		my $select;
 		if (exists $a->{'{}select'}) {
 		    $self->doError(213, 3, 'select', '<stx:assign>')
-		      if $a->{'{}select'}->{Value} =~ /\{|\}$/;
+		      if $a->{'{}select'}->{Value} =~ /\{|\}/;
 		    $select = $self->tokenize($a->{'{}select'}->{Value});
 		}
 
 		$self->{_variable_select} = $select;
 
-		push @{$self->{c_template}->{instructions}},
+		push @{$self->{c_template}->[-1]->{instructions}},
 		  [I_ASSIGN_START, $name, $select];
 		#print "COMP: >ASSIGN_START\n";
 	    }
@@ -1104,15 +1105,15 @@ sub start_element {
 		$name = $self->_expand_qname($name);
 
 		# local buffer ------------------------------
-		if ($self->{c_template}) {
+		if ($self->{c_template}->[0]) {
 
 		    # buffer already declared
 		    $self->doError(211, 3, 'Local buffer', "\'$name\'") 
-		      if exists $self->{c_template}->{bufs}->[0]->{$name};
+		      if exists $self->{c_template}->[-1]->{bufs}->[0]->{$name};
 
 		    push @{$e_stack_top->{bufs}}, $name;
 
-		    push @{$self->{c_template}->{instructions}}, 
+		    push @{$self->{c_template}->[-1]->{instructions}}, 
 		      [I_BUFFER_START, $name];
 		    #print "COMP: >BUFFER_START\n";
 
@@ -1155,7 +1156,7 @@ sub start_element {
 		    }
 		}
 
-		push @{$self->{c_template}->{instructions}},
+		push @{$self->{c_template}->[-1]->{instructions}},
 		  [I_RES_BUFFER_START, $name, $clear];
 		#print "COMP: >RESULT_BUFFER_START\n";
 	    }
@@ -1185,7 +1186,7 @@ sub start_element {
 		    $group = $self->_expand_qname($a->{'{}group'}->{Value});
 		}
 
-		push @{$self->{c_template}->{instructions}}, 
+		push @{$self->{c_template}->[-1]->{instructions}}, 
 		  [I_P_BUFFER_START, $name, $group];
 		#print "COMP: >PROCESS BUFFER START\n";
 	    }
@@ -1211,7 +1212,7 @@ sub start_element {
 		    $encoding = $a->{'{}encoding'}->{Value};
 		}
 		
-		push @{$self->{c_template}->{instructions}},
+		push @{$self->{c_template}->[-1]->{instructions}},
 		  [I_RES_DOC_START, $href, $encoding];
 		#print "COMP: >RESULT_DOCUMENT_START\n";
 	    }
@@ -1241,9 +1242,75 @@ sub start_element {
 		my $base = exists $a->{'{}base'} 
 		  ? $self->_avt($a->{'{}base'}->{Value}) : undef;
 		
-		push @{$self->{c_template}->{instructions}}, 
+		push @{$self->{c_template}->[-1]->{instructions}}, 
 		  [I_P_DOC_START, $href, $group, $base];
-		#print "COMP: >PROCESS DOCUMENT START\n";
+		#print "COMP: >PROCESS_DOCUMENT_START\n";
+	    }
+
+	# <stx:for-each-item> ----------------------------------------
+	} elsif ($el->{LocalName} eq'for-each-item') {
+
+	    if ($self->_allowed($el->{LocalName})) {
+
+		# --- name ---
+		$self->doError(212, 3, '<stx:for-each-item>', 'name')
+		  unless exists $a->{'{}name'};
+
+		$self->doError(214,3,'name','<stx:for-each-item>','qname') 
+		  unless $a->{'{}name'}->{Value} =~ /^$ATT_QNAME$/;
+
+		my $name = $self->_expand_qname($a->{'{}name'}->{Value});
+
+		# --- select ---
+		$self->doError(212, 3, '<stx:for-each-item>', 'select')
+		  unless exists $a->{'{}select'};
+
+		$self->doError(213, 3, 'select', '<stx:for-each-item>')
+		  if $a->{'{}select'}->{Value} =~ /\{|\}/;
+
+		my $expr = $self->tokenize($a->{'{}select'}->{Value});
+
+		# --- content is template ---
+		my $t = XML::STX::Template->new($self->{Sheet}->{next_tid},
+						$g_stack_top);
+
+		push @{$self->{c_template}->[-1]->{instructions}}, 
+		  [I_FOR_EACH_ITEM, $name, $expr, $t];
+		#print "COMP: >FOR_EACH_ITEM\n";
+
+		push @{$self->{c_template}}, $t;
+		$self->{Sheet}->{next_tid}++;
+	    }
+
+	# <stx:while> ----------------------------------------
+	} elsif ($el->{LocalName} eq'while') {
+
+	    if ($self->_allowed($el->{LocalName})) {
+
+		# --- test ---
+		$self->doError(212, 3, '<stx:while>', 'test')
+		  unless exists $a->{'{}test'};
+
+		$self->doError(213, 3, 'test', '<stx:while>')
+		  if $a->{'{}test'}->{Value} =~ /\{|\}/;
+
+		my $expr = $self->tokenize($a->{'{}test'}->{Value});
+
+		unless (grep(index($_,'$') == 0, @$expr)) {
+		    $self->doError(222, 1, $a->{'{}test'}->{Value});
+		    $self->{Sheet}->{Options}->{LoopLimit} = 1;
+		}
+
+		# --- content is template ---
+		my $t = XML::STX::Template->new($self->{Sheet}->{next_tid},
+						$g_stack_top);
+
+		push @{$self->{c_template}->[-1]->{instructions}}, 
+		  [I_WHILE, $expr, $t];
+		#print "COMP: >WHILE\n";
+
+		push @{$self->{c_template}}, $t;
+		$self->{Sheet}->{next_tid}++;
 	    }
 
 	} else {
@@ -1265,7 +1332,7 @@ sub start_element {
 	    }
 		
 	    my $i = [I_LITERAL_START, $el];
-	    push @{$self->{c_template}->{instructions}}, $i;
+	    push @{$self->{c_template}->[-1]->{instructions}}, $i;
 	    #print "COMP: >LITERAL_START $el->{Name}\n";
 
 	} else { #???
@@ -1311,46 +1378,47 @@ sub end_element {
 	# <stx:process-children> ----------------------------------------
 	} elsif ($el->{LocalName} eq 'process-children') {
 
-	    push @{$self->{c_template}->{instructions}}, [I_P_CHILDREN_END];
+	    push @{$self->{c_template}->[-1]->{instructions}}, [I_P_CHILDREN_END];
 	    #print "COMP: >PROCESS CHILDREN END /$el->{Name}\n";
 
 	# <stx:process-self> ----------------------------------------
 	} elsif ($el->{LocalName} eq 'process-self') {
 
-	    push @{$self->{c_template}->{instructions}}, [I_P_SELF_END];
+	    push @{$self->{c_template}->[-1]->{instructions}}, [I_P_SELF_END];
 	    #print "COMP: >PROCESS SELF END /$el->{Name}\n";
 
 	# <stx:process-attributes> ----------------------------------------
 	} elsif ($el->{LocalName} eq 'process-attributes') {
 
-	    push @{$self->{c_template}->{instructions}}, [I_P_ATTRIBUTES_END];
+	    push @{$self->{c_template}->[-1]->{instructions}}, [I_P_ATTRIBUTES_END];
 	    #print "COMP: >PROCESS ATTRIBUTES END /$el->{Name}\n";
 
 	# <stx:process-buffer> ----------------------------------------
 	} elsif ($el->{LocalName} eq 'process-buffer') {
 
-	    push @{$self->{c_template}->{instructions}}, [I_P_BUFFER_END];
+	    push @{$self->{c_template}->[-1]->{instructions}}, [I_P_BUFFER_END];
 	    #print "COMP: >PROCESS BUFFER END /$el->{Name}\n";
 
 	# <stx:process-document> ----------------------------------------
 	} elsif ($el->{LocalName} eq 'process-document') {
 
-	    push @{$self->{c_template}->{instructions}}, [I_P_DOC_END];
+	    push @{$self->{c_template}->[-1]->{instructions}}, [I_P_DOC_END];
 	    #print "COMP: >PROCESS DOCUMENT END /$el->{Name}\n";
 
 	# <stx:call-procedure> ----------------------------------------
 	} elsif ($el->{LocalName} eq 'call-procedure') {
 
-	    push @{$self->{c_template}->{instructions}}, [I_CALL_PROCEDURE_END];
+	    push @{$self->{c_template}->[-1]->{instructions}}, 
+	      [I_CALL_PROCEDURE_END];
 	    #print "COMP: >CALL PROCEDURE END /$el->{Name}\n";
 
 	# <stx:variable> ----------------------------------------
 	} elsif ($el->{LocalName} =~ /^(variable|param)$/) {
 
 	    # local variable
-	    if ($self->{c_template}) {
+	    if ($self->{c_template}->[0]) {
 		
-		push @{$self->{c_template}->{instructions}}, [I_VARIABLE_END];
+		push @{$self->{c_template}->[-1]->{instructions}}, [I_VARIABLE_END];
 		#print "COMP: >VARIABLE END\n";
 	    } else {
 		# tbd
@@ -1359,13 +1427,13 @@ sub end_element {
 	# <stx:assign> ----------------------------------------
 	} elsif ($el->{LocalName} eq 'assign') {
 
-	    push @{$self->{c_template}->{instructions}}, [I_ASSIGN_END];
+	    push @{$self->{c_template}->[-1]->{instructions}}, [I_ASSIGN_END];
 	    #print "COMP: >ASSIGN_END\n";
 
 	# <stx:with-param> ----------------------------------------
 	} elsif ($el->{LocalName} eq 'with-param') {
 
-	    push @{$self->{c_template}->{instructions}}, [I_WITH_PARAM_END];
+	    push @{$self->{c_template}->[-1]->{instructions}}, [I_WITH_PARAM_END];
 	    #print "COMP: >WITH_PARAM_END\n";
 
 	# <stx:group> ----------------------------------------
@@ -1379,58 +1447,58 @@ sub end_element {
 
 	# <stx:template> ----------------------------------------
 	} elsif ($el->{LocalName} eq 'template') {
-	    $self->{c_template} = undef;
+	    pop @{$self->{c_template}};
 
 	# <stx:procedure> ----------------------------------------
 	} elsif ($el->{LocalName} eq 'procedure') {
-	    $self->{c_template} = undef;
+	    pop @{$self->{c_template}};
 
 	# <stx:copy> ----------------------------------------
 	} elsif ($el->{LocalName} eq 'copy') {
 
-	    push @{$self->{c_template}->{instructions}}, [I_COPY_END];
+	    push @{$self->{c_template}->[-1]->{instructions}}, [I_COPY_END];
 	    #print "COMP: >COPY_END\n";
 
 	# <stx:element> ----------------------------------------
 	} elsif ($el->{LocalName} eq 'element') {
 
-	    push @{$self->{c_template}->{instructions}}, [I_ELEMENT_END];
+	    push @{$self->{c_template}->[-1]->{instructions}}, [I_ELEMENT_END];
 	    #print "COMP: >ELEMENT_END /$el->{Name}\n";
 
 	# <stx:attribute> ----------------------------------------
 	} elsif ($el->{LocalName} eq 'attribute') {
 
-	    push @{$self->{c_template}->{instructions}}, [I_ATTRIBUTE_END];
+	    push @{$self->{c_template}->[-1]->{instructions}}, [I_ATTRIBUTE_END];
 	    #print "COMP: >ATTRIBUTE_END\n";
 
         # <stx:cdata> ----------------------------------------
 	} elsif ($el->{LocalName} eq 'cdata') {
 
-	    push @{$self->{c_template}->{instructions}}, [I_CDATA_END];
+	    push @{$self->{c_template}->[-1]->{instructions}}, [I_CDATA_END];
 	    #print "COMP: >CDATA_END\n";
 
         # <stx:comment> ----------------------------------------
 	} elsif ($el->{LocalName} eq 'comment') {
 
-	    push @{$self->{c_template}->{instructions}}, [I_COMMENT_END];
+	    push @{$self->{c_template}->[-1]->{instructions}}, [I_COMMENT_END];
 	    #print "COMP: >COMMENT_END\n";
 
         # <stx:processing-instruction> -----------------------------------
 	} elsif ($el->{LocalName} eq 'processing-instruction') {
 
-	    push @{$self->{c_template}->{instructions}}, [I_PI_END];
+	    push @{$self->{c_template}->[-1]->{instructions}}, [I_PI_END];
 	    #print "COMP: >PI_END\n";
 
 	# <stx:if> ----------------------------------------
 	} elsif ($el->{LocalName} eq 'if') {
 
-	    push @{$self->{c_template}->{instructions}}, [I_IF_END];
+	    push @{$self->{c_template}->[-1]->{instructions}}, [I_IF_END];
 	    #print "COMP: >IF_END\n";
 
 	# <stx:else> ----------------------------------------
 	} elsif ($el->{LocalName} eq 'else') {
 
-	    push @{$self->{c_template}->{instructions}}, [I_ELSE_END];
+	    push @{$self->{c_template}->[-1]->{instructions}}, [I_ELSE_END];
 	    #print "COMP: >ELSE_END\n";
 
 	# <stx:choose> ----------------------------------------
@@ -1442,21 +1510,21 @@ sub end_element {
 	# <stx:when> ----------------------------------------
 	} elsif ($el->{LocalName} eq 'when') {
 
-	    push @{$self->{c_template}->{instructions}}, [I_ELSIF_END];
+	    push @{$self->{c_template}->[-1]->{instructions}}, [I_ELSIF_END];
 	    #print "COMP: >WHEN_END\n";
 
 	# <stx:otherwise> ----------------------------------------
 	} elsif ($el->{LocalName} eq 'otherwise') {
 
-	    push @{$self->{c_template}->{instructions}}, [I_ELSE_END];
+	    push @{$self->{c_template}->[-1]->{instructions}}, [I_ELSE_END];
 	    #print "COMP: >OTHERWISE_END\n";
 
 	# <stx:buffer> ----------------------------------------
 	} elsif ($el->{LocalName} eq 'buffer') {
 
 	    # local buffer
-	    if ($self->{c_template}) {
-		push @{$self->{c_template}->{instructions}}, [I_BUFFER_END];
+	    if ($self->{c_template}->[0]) {
+		push @{$self->{c_template}->[-1]->{instructions}}, [I_BUFFER_END];
 		#print "COMP: >BUFFER_END\n";
 
 	    } else {
@@ -1466,14 +1534,23 @@ sub end_element {
 	# <stx:result-buffer> ----------------------------------------
 	} elsif ($el->{LocalName} eq 'result-buffer') {
 
-	    push @{$self->{c_template}->{instructions}}, [I_RES_BUFFER_END];
+	    push @{$self->{c_template}->[-1]->{instructions}}, [I_RES_BUFFER_END];
 	    #print "COMP: >RESULT_BUFFER_END\n";
 
 	# <stx:result-document> ----------------------------------------
 	} elsif ($el->{LocalName} eq 'result-document') {
 
-	    push @{$self->{c_template}->{instructions}}, [I_RES_DOC_END];
+	    push @{$self->{c_template}->[-1]->{instructions}}, [I_RES_DOC_END];
 	    #print "COMP: >RESULT_DOCUMENT_END\n";
+
+	# <stx:for-each-item> ----------------------------------------
+	} elsif ($el->{LocalName} eq 'for-each-item') {
+	    pop @{$self->{c_template}};
+
+	# <stx:while> ----------------------------------------
+	} elsif ($el->{LocalName} eq 'while') {
+	    pop @{$self->{c_template}};
+
 	}
 
 	# end tags for empty elements can be ignored, their emptiness is 
@@ -1482,23 +1559,27 @@ sub end_element {
     # literals
     } else {
 	
-	push @{$self->{c_template}->{instructions}}, [I_LITERAL_END, $el];
+	push @{$self->{c_template}->[-1]->{instructions}}, [I_LITERAL_END, $el];
 	#print "COMP: >LITERAL_END /$el->{Name}\n";
     }
 
     my $e = pop @{$self->{e_stack}};
 
     # end of local variable visibility
-    foreach (@{$e->{vars}}) {
-	push @{$self->{c_template}->{instructions}}, [I_VARIABLE_SCOPE_END, $_];
-	#$self->{c_template}->{vars}->[0]->{$_} = undef;
-	#print "COMP: >VARIABLE_SCOPE_END $_\n";
+    if ($self->{c_template}->[0]) {
+	foreach (@{$e->{vars}}) {
+	    push @{$self->{c_template}->[-1]->{instructions}}, 
+	      [I_VARIABLE_SCOPE_END, $_];
+	    #print "COMP: >VARIABLE_SCOPE_END $_\n";
+	}
     }
     # end of local buffer visibility
-    foreach (@{$e->{bufs}}) {
-	push @{$self->{c_template}->{instructions}}, [I_BUFFER_SCOPE_END, $_];
-	#$self->{c_template}->{bufs}->[0]->{$_} = undef;
-	#print "COMP: >BUFFER_SCOPE_END $_\n";
+    if ($self->{c_template}->[0]) {
+	foreach (@{$e->{bufs}}) {
+	    push @{$self->{c_template}->[-1]->{instructions}}, 
+	      [I_BUFFER_SCOPE_END, $_];
+	    #print "COMP: >BUFFER_SCOPE_END $_\n";
+	}
     }
 
     $self->{nsc}->popContext;
@@ -1515,7 +1596,7 @@ sub characters {
 	   and $parent->{LocalName} =~ /^(text|cdata)$/) {
 
 	    if ($self->_allowed('_text')) {
-		push @{$self->{c_template}->{instructions}},
+		push @{$self->{c_template}->[-1]->{instructions}},
 		  [I_CHARACTERS, $char->{Data}];
 		#print "COMP: >CHARACTERS - $char->{Data}\n";
 	    }
@@ -1524,7 +1605,7 @@ sub characters {
     # not whitespace only
     } else {
 	if ($self->_allowed('_text')) {
-	    push @{$self->{c_template}->{instructions}},
+	    push @{$self->{c_template}->[-1]->{instructions}},
 	      [I_CHARACTERS, $char->{Data}];
 	    #print "COMP: >CHARACTERS - $char->{Data}\n";
 	}	
@@ -1759,8 +1840,8 @@ my $s_content_constr = [@$s_text_constr ,'call-procedure', 'copy',
 			'start-element', 'end-element', 'comment',
 			'processing-instruction', 'variable', 'param', 
 			'assign', 'buffer', 'result-buffer', 'process-buffer',
-			'result-document', 'process-document', 'for-each',
-			'_literal', 'attribute'];
+			'result-document', 'process-document', 'for-each-item',
+			'while', '_literal', 'attribute'];
 
 my $s_template = [@$s_content_constr, 'process-children'];
 
@@ -1788,7 +1869,8 @@ my $sch = {
 	   choose => ['when','otherwise'],
 	   when => $s_template,
 	   otherwise => $s_template,
-	   'for-each' => $s_template,
+	   'for-each-item' => $s_template,
+	   while => $s_template,
 	   variable => $s_text_constr,
 	   assign => $s_text_constr,
 	   text => ['_text'],
@@ -1950,7 +2032,7 @@ __END__
 
 =head1 NAME
 
-XML::STX::Compiler - XML::STX stylesheet compiler
+XML::STX::Parser - XML::STX stylesheet parser
 
 =head1 SYNOPSIS
 

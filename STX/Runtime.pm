@@ -7,7 +7,7 @@ use XML::SAX::Base;
 use XML::NamespaceSupport;
 use XML::STX::Base;
 use XML::STX::STXPath;
-use XML::STX::Compiler;
+use XML::STX::Parser;
 use Clone qw(clone);
 
 @XML::STX::Runtime::ISA = qw(XML::SAX::Base XML::STX::Base);
@@ -23,7 +23,8 @@ sub new {
     # turn NS processing on by default
     $self->set_feature('http://xml.org/sax/features/namespaces', 1);
 
-    $self->{SoS} = []; # stack of stacks to keep stacks on process-document
+    $self->{SoS} = [];   # stack of stacks to keep stacks on process-document
+    $self->{nodeID} = 0; # global counter to generate node IDs
     return $self;
 }
 
@@ -36,6 +37,7 @@ sub start_document {
     my $frame = {Type => STX_ROOT_NODE, 
 		 Index => 0, 
 		 Name => '/',
+		 ID => $self->{nodeID}++,
 		};
 
     $self->_current_node([STXE_START_DOCUMENT, $frame]);
@@ -65,6 +67,7 @@ sub start_element {
 		 NamespaceURI => $el->{NamespaceURI},
 		 Prefix => $el->{Prefix},
 		 LocalName => $el->{LocalName},
+		 ID => $self->{nodeID}++,
 		};
 
     $self->_current_node([STXE_START_ELEMENT, $frame]);
@@ -91,6 +94,7 @@ sub characters {
 	my $frame = {
 		     Type => $type,
 		     Data => $char->{Data},
+		     ID => $self->{nodeID}++,
 		    };
 
 	$self->_current_node([STXE_CHARACTERS, $frame]);
@@ -106,6 +110,7 @@ sub processing_instruction {
 		 Type => STX_PI_NODE,
 		 Target => $pi->{Target},
 		 Data => $pi->{Data},
+		 ID => $self->{nodeID}++,
 		};
 
     $self->_current_node([STXE_PI, $frame]);
@@ -159,6 +164,7 @@ sub comment {
     my $frame = {
 		 Type => STX_COMMENT_NODE,
 		 Data => $comment->{Data},
+		 ID => $self->{nodeID}++,
 		};
 
     $self->_current_node([STXE_COMMENT, $frame]);
@@ -342,6 +348,7 @@ sub _start_element {
     foreach (keys %{$el->{Attributes}}) {
  	$el->{Attributes}->{$_}->{Type} = STX_ATTRIBUTE_NODE;
  	$el->{Attributes}->{$_}->{Index} = $index + 1;
+	$el->{Attributes}->{$_}->{ID} => $self->{nodeID}++,
      }
 
     # NS context + declarations
@@ -632,7 +639,7 @@ sub _process_self {
 	  unless grep($t->{tid} == $_, @{$self->{_excluded_templates}});
     }
 
-    # run the best match template if any sss
+    # run the best match template if any
     if ($new_templates->[0]) {
 	push @{$node->{Group}}, $templates->[0]->{group};
 
@@ -780,8 +787,8 @@ sub _run_template {
 	$self->{position} = $position;
 	$ns = $i_ns;
 
-    # self & procedures
-    } elsif ($ctx == 2) {
+    # self & procedures OR internal loop (for-each-item/while)
+    } elsif ($ctx == 2 or $ctx == 3) {
 	$t = $templates->[0];
 	$env = $i_ns;
 	$self->{position} = $env->{position};
@@ -1519,6 +1526,67 @@ sub _run_template {
 	} elsif ($i->[0] == I_ELSE_END) {
 
 	    pop @{$env->{condition}};
+
+  	# I_FOR_EACH_ITEM ----------------------------------------
+  	} elsif ($i->[0] == I_FOR_EACH_ITEM) {
+	    $out = $self->_send_element_start($out) if exists $out->{Name};
+
+	    foreach my $item (@{$self->_eval($i->[2], $ns)}) {
+		#print "STX: for-each-item: type $item->[1]\n";
+
+ 		# linking local variable and buffers
+ 		$i->[3]->{vars}->[0] = $t->{vars}->[-1];
+ 		$i->[3]->{bufs}->[0] = $t->{bufs}->[-1];
+		$i->[3]->{vars}->[-1]->{$i->[1]} = [[$item]];
+		# keeping existing variables and buffers
+		my @eVars = keys %{$t->{vars}->[-1]};
+		my @eBufs = keys %{$t->{bufs}->[-1]};
+
+		$self->_run_template(3, [$i->[3]], $env, $c_node);
+
+ 		# removing added variablers and buffers
+ 		foreach my $var (keys %{$t->{vars}->[-1]}) {
+ 		    delete($t->{vars}->[-1]->{$var}) 
+ 		      unless grep($_ eq $var, @eVars);
+ 		}
+ 		foreach my $buf (keys %{$t->{bufs}->[-1]}) {
+ 		    delete($t->{bufs}->[-1]->{$buf}) 
+ 		      unless grep($_ eq $buf, @eBufs);
+ 		}
+	    }
+
+  	# I_WHILE ----------------------------------------
+  	} elsif ($i->[0] == I_WHILE) {
+	    $out = $self->_send_element_start($out) if exists $out->{Name};
+
+	    my $bool = $self->{SP}->F_boolean($self->_eval($i->[1], $ns));
+
+	    my $count = 0; # infinite loop protection;
+	    while ($bool->[0] and $count < $self->{Options}->{LoopLimit}) {
+		#print "STX: while: $bool->[0]\n";
+
+ 		# linking local variable and buffers
+ 		$i->[2]->{vars}->[0] = $t->{vars}->[-1];
+ 		$i->[2]->{bufs}->[0] = $t->{bufs}->[-1];
+		# keeping existing variables and buffers
+		my @eVars = keys %{$t->{vars}->[-1]};
+		my @eBufs = keys %{$t->{bufs}->[-1]};
+
+ 		$self->_run_template(3, [$i->[2]], $env, $c_node);
+
+ 		# removing added variablers and buffers
+ 		foreach my $var (keys %{$t->{vars}->[-1]}) {
+ 		    delete($t->{vars}->[-1]->{$var}) 
+ 		      unless grep($_ eq $var, @eVars);
+ 		}
+ 		foreach my $buf (keys %{$t->{bufs}->[-1]}) {
+ 		    delete($t->{bufs}->[-1]->{$buf}) 
+ 		      unless grep($_ eq $buf, @eBufs);
+ 		}
+		
+		$bool = $self->{SP}->F_boolean($self->_eval($i->[1], $ns));
+		$count++;
+	    }
 
 	}
 

@@ -15,8 +15,8 @@ use XML::SAX::Writer;
 my $templ_uri = shift;
 my $data_uri = shift;
 
-my $comp = XML::STX::Compiler->new();
-my $parser_t = XML::SAX::Expat->new(Handler => $comp);
+my $p = XML::STX::Parser->new();
+my $parser_t = XML::SAX::Expat->new(Handler => $p);
 my $stylesheet =  $parser_t->parse_uri($templ_uri);
 
 my $writer = XML::SAX::Writer->new();

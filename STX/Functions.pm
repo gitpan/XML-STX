@@ -12,6 +12,7 @@ use POSIX ();
 # empty()
 # exists()
 # item-at()
+# index-of()
 # subsequence()
 # insert-before()
 # remove()
@@ -36,6 +37,9 @@ use POSIX ();
 # string-length()
 # normalize-space()
 # translate()
+# upper-case()
+# lower-case()
+# string-pad()
 
 # floor()
 # ceiling()
@@ -503,6 +507,46 @@ sub F_translate($$$){
     return [[$_, STX_STRING]];
 }
 
+# STRING = upper-case(string) --------------------
+sub F_upper_case($){
+    my ($self, $s) = @_;
+
+    return [] unless $s->[0];
+
+    my $str = $s->[0]->[1] == STX_STRING ? $s->[0] : $self->F_string($s);
+
+    return [[uc($str->[0]), STX_STRING]];
+}
+
+# STRING = lower-case(string) --------------------
+sub F_lower_case($){
+    my ($self, $s) = @_;
+
+    return [] unless $s->[0];
+
+    my $str = $s->[0]->[1] == STX_STRING ? $s->[0] : $self->F_string($s);
+
+    return [[lc($str->[0]), STX_STRING]];
+}
+
+# STRING = string-pad(string, number) --------------------
+sub F_string_pad($$){
+    my ($self, $s, $n) = @_;
+
+    return [] unless $s->[0];
+
+    my $str = $s->[0]->[1] == STX_STRING ? $s->[0] : $self->F_string($s);
+    my $cnt = $n->[0]->[1] == STX_NUMBER ? $n->[0] : $self->F_number($n);
+    my $c = sprintf("%.0f", $cnt->[0]);
+
+    $self->doError('109', 3, $c) if $c < 0;
+
+    my $pad = '';
+    for (my $i = 0; $i < $c; $i++) { $pad .= $str->[0]; }
+
+    return [[$pad, STX_STRING]];
+}
+
 # NUMBER = floor(seq) --------------------
 sub F_floor($){
     my ($self, $seq) = @_;
@@ -638,6 +682,35 @@ sub F_item_at($$){
     $self->doError('106', 3, $i, scalar @$seq) unless $seq->[$i-1];
     $self->doError('107', 3, $i) unless $i>0;
     return [$seq->[$i-1]];
+}
+
+# seq = index-of(seq, item) --------------------
+sub F_index_of(){
+    my ($self, $seq, $srch) = @_;
+
+    my $res = [];
+    foreach (my $i=0; $i < @$seq; $i++) {
+
+	if ($srch->[0]->[1] == 2) { # boolean
+	    push @$res, [$i+1, STX_NUMBER]
+	      if ($seq->[$i]->[1] == 2) && ($srch->[0]->[0] == $seq->[$i]->[0]);
+
+	} elsif ($srch->[0]->[1] == 3) { # number
+	    push @$res, [$i+1, STX_NUMBER]
+	      if ($seq->[$i]->[1] == 3) && ($srch->[0]->[0] == $seq->[$i]->[0]);
+ 
+	} elsif ($srch->[0]->[1] == 4) { # string
+	    push @$res, [$i+1, STX_NUMBER]
+	      if (($seq->[$i]->[1] == 4) && ($srch->[0]->[0] eq $seq->[$i]->[0]))
+		or (($seq->[$i]->[1] == 1) && ($srch->[0]->[0] eq $self->F_string($seq->[$i])->[0]));
+
+	} else { # node - string value is used
+	    push @$res, [$i+1, STX_NUMBER]
+	      if (($seq->[$i]->[1] == 4) && ($self->F_string($srch->[0])->[0] eq $seq->[$i]->[0]))
+		or (($seq->[$i]->[1] == 1) && ($self->F_string($srch->[0])->[0] eq $self->F_string($seq->[$i])->[0]));
+	}
+    }
+    return $res;
 }
 
 # seq = subsequence(seq, number) --------------------

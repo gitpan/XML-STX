@@ -2,7 +2,7 @@ require 5.005_02;
 BEGIN { require warnings if $] >= 5.006; }
 use strict;
 use XML::STX;
-use XML::STX::Compiler;
+use XML::STX::Parser;
 use XML::STX::Runtime;
 
 # --------------------------------------------------
@@ -15,15 +15,15 @@ sub new_templates {
 
     $source = $self->_check_source($source);
 
-    my $comp = XML::STX::Compiler->new();
-    $comp->{DBG} = $self->{DBG};
-    $comp->{URIResolver} = $self->{URIResolver};
-    $comp->{URIResolver}->{Parser} = $self->{Parser};
-    $comp->{URIResolver}->{Writer} = $self->{Writer};
-    $comp->{ErrorListener} = $self->{ErrorListener};
-    $comp->{URI} = $source->{SystemId};
+    my $p = XML::STX::Parser->new();
+    $p->{DBG} = $self->{DBG};
+    $p->{URIResolver} = $self->{URIResolver};
+    $p->{URIResolver}->{Parser} = $self->{Parser};
+    $p->{URIResolver}->{Writer} = $self->{Writer};
+    $p->{ErrorListener} = $self->{ErrorListener};
+    $p->{URI} = $source->{SystemId};
 
-    $source->{XMLReader}->{Handler} = $comp;
+    $source->{XMLReader}->{Handler} = $p;
     $source->{XMLReader}->{Source} = $source->{InputSource};
     my $sheet = $source->{XMLReader}->parse();
     $sheet->{URI} = $source->{SystemId};
@@ -87,14 +87,20 @@ use Clone qw(clone);
 sub new {
     my ($class, $sheet, $parser, $writer) = @_;
 
+    my $ll = exists $sheet->{Options}->{LoopLimit} 
+      ? $sheet->{Options}->{LoopLimit} : 10000;
+
     my $self = bless {Sheet => $sheet,
 		      Parameters => {},
+		      # implementation dependent options
+		      Options => {LoopLimit => $ll},
 		      Parser => $parser,
 		      Writer => $writer,
 		      URIResolver => XML::STX::TrAX::URIResolver->new($parser, 
 								      $writer),
 		      ErrorListener => XML::STX::TrAX::ErrorListener->new(),
 		     }, $class;
+
     return $self;
 }
 

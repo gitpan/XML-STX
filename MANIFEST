@@ -3,10 +3,11 @@ MANIFEST
 README
 Makefile.PL
 stxcmd.pl
+stxview.pl
 STX.pm
 STX/Base.pm
 STX/Buffer.pm
-STX/Compiler.pm
+STX/Parser.pm
 STX/Functions.pm
 STX/Runtime.pm
 STX/Stylesheet.pm
@@ -57,6 +58,12 @@ test/element-separate.stx
 test/element.stx
 test/element2.stx
 test/else.stx
+test/for-each-item1.stx
+test/for-each-item2.stx
+test/while1.stx
+test/while2.stx
+test/while3.stx
+test/while4.stx
 test/funct-qname.stx
 test/groups.stx
 test/groups-named.stx
@@ -105,6 +112,7 @@ test/stxpath-get-namespace-for-pref.stx
 test/stxpath-has-child-nodes.stx
 test/stxpath-insert-before.stx
 test/stxpath-item-at.stx
+test/stxpath-index-of.stx
 test/stxpath-node-kind.stx
 test/stxpath-normalize-space.stx
 test/stxpath-ns.stx
@@ -119,6 +127,8 @@ test/stxpath-subsequence.stx
 test/stxpath-substring-ba.stx
 test/stxpath-substring.stx
 test/stxpath-translate.stx
+test/stxpath-case.stx
+test/stxpath-string-pad.stx
 test/template-lookup.stx
 test/template-match1.stx
 test/template-match2.stx

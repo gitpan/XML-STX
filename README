@@ -6,8 +6,8 @@
 2. License
 3. Prerequisites
 4. Build and Install
-5. Authors
-6. Examples
+5. Utilities
+6. Authors
 
 
 1. Description
@@ -48,19 +48,35 @@ The module builds and installs in a standard way:
 To install on Windows (with ActivePerl), just replace "make" with "nmake".
 
 
-5. Author
+5. Utilities
+============
+
+stxcmd.pl
+---------
+	command line interface to XML::STX
+
+	USAGE:
+	  stxcmd.pl [OPTIONS] <transform> <data> [PARAMS]
+
+	OPTIONS:
+          -m : measures and displays duration of transformation
+          -h : displays this help info
+          -v : displays versions of XML::STX and parser/writer to be used
+ 
+	PARAMS:
+          name=value pairs separated by a space
+ 
+	EXAMPLE:
+          stxcmd.pl -m stylesheet.stx data.xml p1=5 p2=yes
+
+stxview.pl
+----------
+	GUI (Gtk+) viewer of STX transformation sheets
+	
+	USAGE: 
+	  stxview.pl
+
+6. Author
 ==========
 
 Petr Cimprich <petr@gingerall.cz>, Ginger Alliance
-
-
-6. Examples
-===========
-
-stxcmd.pl
-	a command line interface to XML::STX
-	Usage: perl stxcmd.pl [-m|h|v] <stx_stylesheet> <xml_data>
-
-stx-filter.pl
-	an example of SAX-filter API
-	Usage: perl stx-filter.pl <stx_stylesheet> <xml_data>	

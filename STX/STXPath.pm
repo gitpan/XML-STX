@@ -481,6 +481,11 @@ sub fcCall {
 	$self->doError(15, 3, scalar @arg, $fce, 2) if @arg != 2;
 	return $self->F_item_at(@arg);
 
+    } elsif ($fce eq 'index-of') {
+	$self->doError(18, 1, $arg[2]->[0]->[0], $fce) if @arg == 3;
+	$self->doError(15, 3, scalar @arg, $fce, 2) if @arg != 2 and @arg != 3;
+	return $self->F_index_of(@arg);
+
     } elsif ($fce eq 'subsequence') {
 	$self->doError(15, 3, scalar @arg, $fce, 2) if @arg != 2 and @arg != 3;
 	return $self->F_subsequence(@arg);
@@ -492,6 +497,18 @@ sub fcCall {
     } elsif ($fce eq 'remove') {
 	$self->doError(15, 3, scalar @arg, $fce, 2) if @arg != 2;
 	return $self->F_remove(@arg);
+
+    } elsif ($fce eq 'upper-case') {
+	$self->doError(15, 3, scalar @arg, $fce, 1) if @arg != 1;
+	return $self->F_upper_case($arg[0]);
+
+    } elsif ($fce eq 'lower-case') {
+	$self->doError(15, 3, scalar @arg, $fce, 1) if @arg != 1;
+	return $self->F_lower_case($arg[0]);
+
+    } elsif ($fce eq 'string-pad') {
+	$self->doError(15, 3, scalar @arg, $fce, 2) if @arg != 2;
+	return $self->F_string_pad(@arg);
 
     # ----------
     } else {
