@@ -6,6 +6,7 @@ use strict ('refs', 'subs');
 use vars qw(@EXPORT);
 use Carp;
 use XML::STX::Writer;
+use XML::SAX::PurePerl;
 require Exporter;
 @XML::STX::Base::ISA = qw(Exporter);
 
@@ -360,7 +361,7 @@ sub _get_parser() {
 	    return eval "$_->new()";
 	}    }
     # fallback
-    return XML::SAX::ParserFactory->parser();
+    return XML::SAX::PurePerl->new();
 }
 
 sub _get_writer() {

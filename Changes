@@ -1,5 +1,8 @@
 Revision history for Perl extension XML::STX.
 
+0.21 March 25, 2003
+	- fixed a bug in returning fallback parser
+
 0.20 March 25, 2003
 	- new TrAX-like API
 	- STXPath revised to match new EBNF grammar

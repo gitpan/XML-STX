@@ -13,7 +13,7 @@ use XML::STX::Compiler;
 use Clone qw(clone);
 
 @XML::STX::ISA = qw(XML::SAX::Base XML::STX::Base XML::STX::TrAX);
-$VERSION = '0.20';
+$VERSION = '0.21';
 
 # --------------------------------------------------
 
