@@ -5,13 +5,13 @@
 
   <stx:template match="node[@id=2]">
     <root>
-      <stx:value-of select="/root/node/text()"/>
+      <stx:value-of select="/root/node"/>
       <stx:text>:</stx:text>
-      <stx:value-of select="text()"/>
+      <stx:value-of select="."/>
       <stx:text>:</stx:text>
-      <stx:value-of select="node/text()"/>
+      <stx:value-of select="node"/>
       <stx:text>:</stx:text>
-      <stx:value-of select="/root/text()"/>
+      <stx:value-of select="/root"/>
     </root>
   </stx:template>
   

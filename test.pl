@@ -7,7 +7,6 @@ BEGIN {
 
 use strict;
 use XML::STX;
-use XML::SAX::PurePerl;
 use TestHandler;
 
 print '-' x 42, "\n";
@@ -30,13 +29,23 @@ while (<INDEX>) {
     my $templ_uri = "test/$ln[0].stx";
     my $data_uri = "test/_data$ln[1].xml";
 
-    my $parser1 = XML::SAX::PurePerl->new(); 
-    my $parser2 = XML::SAX::PurePerl->new();
-    my $handler = TestHandler->new();
-
     my $stx = XML::STX->new();
-    my $templ = $stx->get_stylesheet($parser1, $templ_uri);
-    $stx->transform($templ, $parser2, $data_uri, $handler);
+
+    my $transformer = $stx->new_transformer($templ_uri);
+
+    # external parameters
+    unless ($ln[2] =~ /^\d+$/) {
+	foreach (split(' ', $ln[2])) {
+	    my ($name, $value) = split('=',$_,2);
+	    $transformer->{Parameters}->{$name} = $value;
+	}
+    }
+
+    my $source = $stx->new_source($data_uri);
+    my $handler = TestHandler->new();
+    my $result = $stx->new_result($handler);
+
+    $transformer->transform($source, $result);
 
     $handler->{result} =~ s/\s//g;
     $ln[3] =~ s/\s//g;

@@ -4,7 +4,7 @@
   <stx:options strip-space="yes" 
 	       recognize-cdata="no"/>
 
-  <stx:template match="text()[name(parent::*)='root']">
+  <stx:template match="text()[name(..)='root']">
     [<stx:copy/>]
   </stx:template>
 

@@ -117,13 +117,8 @@ sub F_string($$){
 		$self->doError('102', 2, 'root');
 		return ['',STX_STRING];
 
-	    } elsif ($seq->[0]->[0]->{Type} == STX_ELEMENT_NODE) {
-		my $look = ref $self->_lookahead 
-		  ? $self->_lookahead()->{Data} : '';
-		return [$look,STX_STRING];
-
-	    } elsif ($seq->[0]->[0]->{Type} == STX_ATTRIBUTE_NODE
-		     or $seq->[0]->[0]->{Type} == STX_NS_NODE) {
+	    } elsif ($seq->[0]->[0]->{Type} == STX_ELEMENT_NODE
+		    or $seq->[0]->[0]->{Type} == STX_ATTRIBUTE_NODE) {
 		return [$seq->[0]->[0]->{Value},STX_STRING];
 
 	    } elsif ($seq->[0]->[0]->{Type} == STX_TEXT_NODE

@@ -1,5 +1,4 @@
 #!/usr/bin/perl
-
 BEGIN {
     unshift @INC, "blib/lib", "blib/arch";
 }

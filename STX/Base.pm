@@ -5,6 +5,7 @@ BEGIN { require warnings if $] >= 5.006; }
 use strict ('refs', 'subs');
 use vars qw(@EXPORT);
 use Carp;
+use XML::STX::Writer;
 require Exporter;
 @XML::STX::Base::ISA = qw(Exporter);
 
@@ -18,7 +19,6 @@ require Exporter;
 	      STX_COMMENT_NODE
 	      STX_ATTRIBUTE_NODE
 	      STX_ROOT_NODE
-	      STX_NS_NODE
 
               STX_NODE
               STX_BOOLEAN
@@ -84,7 +84,6 @@ require Exporter;
 	      $NCWild
 	      $QNWild
 	      $NODE_TYPE
-	      $AXIS_NAME
 	      $NUMBER_RE
 	      $DOUBLE_RE
 	      $LITERAL
@@ -99,7 +98,6 @@ sub STX_PI_NODE(){4;}
 sub STX_COMMENT_NODE(){5;}
 sub STX_ATTRIBUTE_NODE(){6;}
 sub STX_ROOT_NODE(){7;}
-sub STX_NS_NODE(){8;}
 
 # atomic data types
 sub STX_NODE(){1;}
@@ -170,7 +168,6 @@ $QName = "($NCName:)?$NCName";
 $NCWild = "${NCName}:\\*|\\*:${NCName}";
 $QNWild = "\\*";
 $NODE_TYPE = '((text|comment|processing-instruction|node|cdata)\\(\\))';
-$AXIS_NAME = '(ancestor|parent|namespace)::';
 $NUMBER_RE = '\d+(\\.\d*)?|\\.\d+';
 $DOUBLE_RE = '\d+(\\.\d*)?[eE][+-]?\d+';
 $LITERAL = '\\"[^\\"]*\\"|\\\'[^\\\']*\\\'';
@@ -233,7 +230,7 @@ sub _err_msg {
 	1 => "Invalid query:\n_P\n_P^^^",
 	2 => "_P expression failed to parse - junk after end: _P",
 	3 => "Invalid parenthesized expression: _P not expected",
-	4 => "Error in expression - /.. or //..",
+	4 => "Error in expression - //..",
 	5 => "Error in expression - .._P",
 	6 => "Error in expression - _P not expected",
 	7 => "Incorrect match pattern: [ expected instead of _P",
@@ -257,7 +254,7 @@ sub _err_msg {
         106 => "count(): item _P requested for sequence with _P members",
         107 => "count(): item _P requested. Indexes start from 1",
 
-	# Stylesheet compiler
+	# Stylesheet parser
         201 => "Chunk after the end of document element",
         202 => "_P not allowed as document element (use <stx:transform>)",
         203 => "<_P> must be present only once",
@@ -287,6 +284,8 @@ sub _err_msg {
         506 => "Position not defined for attributes",
         507 => "Group named '_P' not defined",
         508 => "Called procedure _P not visible",
+        509 => "_P is not valid _P for TrAX API",
+        510 => "Required parameter _P hasn't been not supplied",
 	);
 
     my $msg = $msg{$no};
@@ -334,15 +333,97 @@ sub _type($) {
 sub _counter_key($) {
     my ($self, $tok) = @_;
 
-    $tok =~ s/node\(\)/\/node/ 
-      or $tok =~ s/text\(\)/\/text/ 
-	or $tok =~ s/cdata\(\)/\/cdata/ 
-	  or $tok =~ s/comment\(\)/\/comment/
-	    or $tok =~ s/processing-instruction\(\)/\/processing-instruction/ 
-	      or $tok = index($tok, ':') > 0 ? $tok : ':' . $tok;
+    $tok =~ s/^node\(\)$/\/node/ 
+      or $tok =~ s/^text\(\)$/\/text/ 
+	or $tok =~ s/^cdata\(\)$/\/cdata/ 
+	  or $tok =~ s/^comment\(\)$/\/comment/
+	    or $tok =~ s/^processing-instruction\(\)$/\/pi/ 
+	      or $tok =~ s/^processing-instruction:(.*)$/\/pi:$1/ 
+		or $tok = index($tok, ':') > 0 ? $tok : ':' . $tok;
     $tok =~ s/\*/\/star/;
 
     return $tok;
+}
+
+sub _get_parser() {
+    my $self = shift;
+
+    my @preferred = ('XML::SAX::Expat',
+		     'XML::LibXML::SAX::Parser');
+
+    unshift @preferred, $self->{Parser} if $self->{Parser};
+
+    foreach (@preferred) {
+	$@ = undef;
+	eval "require $_;";
+	unless ($@) {
+	    return eval "$_->new()";
+	}    }
+    # fallback
+    return XML::SAX::ParserFactory->parser();
+}
+
+sub _get_writer() {
+    my $self = shift;
+
+    my @preferred = ('XML::SAX::Writer');
+
+    unshift @preferred, $self->{Writer} if $self->{Writer};
+
+    foreach (@preferred) {
+	$@ = undef;
+	eval "require $_;";
+	unless ($@) {
+	    return eval "$_->new()";
+	}    }
+    # fallback
+    return XML::STX::Writer->new();
+}
+
+sub _check_source {
+    my ($self, $source) = @_;
+
+    if (ref $source eq 'XML::STX::TrAX::SAXSource') {
+	return $source;
+
+    } elsif (ref $source eq 'HASH' and defined $source->{SystemId}) {
+	my $reader = $self->_get_parser();
+	return XML::STX::TrAX::SAXSource->new($reader, $source);
+
+    } elsif (ref $source eq '') {
+	my $reader = $self->_get_parser();
+	return XML::STX::TrAX::SAXSource->new($reader, {SystemId => $source});
+
+     } else {
+	     $self->doError(509, 3, ref $source, 'source');
+     }
+}
+
+sub _check_result {
+    my ($self, $result) = @_;
+
+    if (ref $result eq 'XML::STX::TrAX::SAXResult') {
+	return $result;
+
+    } elsif (not defined $result) {
+	my $writer = $self->_get_writer();
+	return XML::STX::TrAX::SAXResult->new($writer);
+
+     } else {
+	 $self->doError(509, 3, ref $result, 'result');
+     }
+}
+
+sub _to_sequence {
+    my ($self, $value) = @_;
+
+    if ($value =~ /^($NUMBER_RE|$DOUBLE_RE)$/) {
+	return [[$1, STX_NUMBER]]
+
+    } else {
+	return [[$value, STX_STRING]];
+    }
+
 }
 
 1;

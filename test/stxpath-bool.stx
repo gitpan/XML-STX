@@ -12,7 +12,7 @@
       <stx:text>-</stx:text>
       <stx:value-of select="not(true() and not(false()))"/>
       <stx:text>-</stx:text>
-      <stx:value-of select="boolean(parent::*)"/>
+      <stx:value-of select="boolean(..)"/>
       <stx:text>-</stx:text>
       <stx:value-of select="not(boolean(get-node(level())))"/>
     </node>

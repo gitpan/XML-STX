@@ -89,7 +89,8 @@ sub start_element {
 		if (exists $a->{'{}default-stxpath-namespace'}) {
 		    if ($a->{'{}default-stxpath-namespace'}->{Value} 
 			=~ /^$ATT_URIREF$/) {
-			$self->{Sheet}->{Options}->{'default-stxpath-namespace'}
+			#$self->{Sheet}->{Options}->{'default-stxpath-namespace'}
+			$g_stack_top->{Options}->{'default-stxpath-namespace'}
 			  = $a->{'{}default-stxpath-namespace'}->{Value};
 		    } else {
 			$self->doError(217, 3, 'default-stxpath-namespace', 
@@ -175,8 +176,7 @@ sub start_element {
 		      unless $a->{'{}name'}->{Value} =~ /^$ATT_QNAME$/;
 		    $g->{name} = $a->{'{}name'}->{Value};
 
-		    my @g = $self->{nsc}->process_element_name($g->{name});
-		    $g->{name} = "$g[0]:$g[2]" if $g[0];
+		    $g->{name} = $self->_expand_qname($g->{name});
 
 		    $self->doError(219, 3, 'group', $g->{name}) 
 		      if exists $self->{Sheet}->{named_groups}->{$g->{name}};
@@ -330,9 +330,7 @@ sub start_element {
 		  unless $a->{'{}name'}->{Value} =~ /^$ATT_QNAME$/;
 		$p->{name} = $a->{'{}name'}->{Value};
 
-		my @p = $self->{nsc}->process_element_name($p->{name});
-		$p->{name} = "$p[0]:$p[2]" if $p[0];
-
+		$p->{name} = $self->_expand_qname($p->{name});
 
 		# --- visibility ---
 		if (exists $a->{'{}visibility'}) {
@@ -410,8 +408,7 @@ sub start_element {
 		      unless $a->{'{}group'}->{Value} =~ /^$ATT_QNAME$/;
 		    $group = $a->{'{}group'}->{Value};
 
-		    my @g = $self->{nsc}->process_element_name($group);
-		    $group = "$g[0]:$g[2]" if $g[0];
+		    $group = $self->_expand_qname($group);
 		}
 
 		push @{$self->{c_template}->{instructions}}, 
@@ -431,8 +428,7 @@ sub start_element {
 		      unless $a->{'{}group'}->{Value} =~ /^$ATT_QNAME$/;
 		    $group = $a->{'{}group'}->{Value};
 
-		    my @g = $self->{nsc}->process_element_name($group);
-		    $group = "$g[0]:$g[2]" if $g[0];
+		    $group = $self->_expand_qname($group);
 		}
 
 		push @{$self->{c_template}->{instructions}}, 
@@ -452,8 +448,7 @@ sub start_element {
 		      unless $a->{'{}group'}->{Value} =~ /^$ATT_QNAME$/;
 		    $group = $a->{'{}group'}->{Value};
 
-		    my @g = $self->{nsc}->process_element_name($group);
-		    $group = "$g[0]:$g[2]" if $g[0];
+		    $group = $self->_expand_qname($group);
 		}
 
 		$self->{c_template}->{_self} = 1;
@@ -475,8 +470,7 @@ sub start_element {
 		      unless $a->{'{}name'}->{Value} =~ /^$ATT_QNAME$/;
 
 		my $name = $a->{'{}name'}->{Value};
-		my @n = $self->{nsc}->process_element_name($name);
-		$name = "$n[0]:$n[2]" if $n[0];
+		$name = $self->_expand_qname($name);
 
 		# --- group ---
 		my $group;
@@ -485,8 +479,7 @@ sub start_element {
 		      unless $a->{'{}group'}->{Value} =~ /^$ATT_QNAME$/;
 		    $group = $a->{'{}group'}->{Value};
 
-		    my @g = $self->{nsc}->process_element_name($group);
-		    $group = "$g[0]:$g[2]" if $g[0];
+		    $group = $self->_expand_qname($group);
 		}
 
 		push @{$self->{c_template}->{instructions}}, 
@@ -739,18 +732,17 @@ sub start_element {
 		  unless $a->{'{}name'}->{Value} =~ /^($ATT_QNAME)$/;
 
 		my $name = $a->{'{}name'}->{Value};
-		my @n = $self->{nsc}->process_element_name($name);
-		$name = "$n[0]:$n[2]" if $n[0];
+		$name = $self->_expand_qname($name);
 
 		my $select;
 		my $default_select;
 		if (exists $a->{'{}select'}) {
 		    $self->doError(213, 3, 'select', '<stx:variable>')
-		      if $a->{'{}select'}->{Value} =~ /\{|\}$/;
+		      if $a->{'{}select'}->{Value} =~ /^\{|\}$/;
 		    $select = $self->tokenize($a->{'{}select'}->{Value});
 		    $default_select = 0;
 		} else {
-		    $select = ['(',')'];
+		    $select = ['""']; # the empty string
 		    $default_select = 1;
 		}
 
@@ -775,7 +767,7 @@ sub start_element {
 
 		    # variable already declared
 		    $self->doError(211, 3, 'Group variable', "\'$name\'") 
-		      if $self->{c_group}->{vars}->[0]->{$name};
+		      if $g_stack_top->{vars}->[0]->{$name};
 
 		    my $keep_value = 0; 
  		    if (exists $a->{'{}keep-value'}) {
@@ -801,6 +793,81 @@ sub start_element {
 
 	    }
 
+	# <stx:param> ----------------------------------------
+	} elsif ($el->{LocalName} eq 'param') {
+
+	    if ($self->_allowed($el->{LocalName})) {
+		
+		$self->doError(212, 3, "<stx:$el->{LocalName}>", 'name')
+		  unless exists $el->{Attributes}->{'{}name'};
+		$self->doError(217, 3, 'name', 
+			       $a->{'{}name'}->{Value}, 'qname')
+		  unless $a->{'{}name'}->{Value} =~ /^($ATT_QNAME)$/;
+
+		my $name = $a->{'{}name'}->{Value};
+		$name = $self->_expand_qname($name);
+
+		my $select;
+		my $default_select;
+		if (exists $a->{'{}select'}) {
+		    $self->doError(213, 3, 'select', '<stx:variable>')
+		      if $a->{'{}select'}->{Value} =~ /^\{|\}$/;
+		    $select = $self->tokenize($a->{'{}select'}->{Value});
+		    $default_select = 0;
+		} else {
+		    $select = ['""']; # the empty string
+		    $default_select = 1;
+		}
+
+		my $required = 0; 
+		if (exists $a->{'{}required'}) {
+		    if ($a->{'{}required'}->{Value} eq 'yes') {
+			$required = 1
+		    } elsif ($a->{'{}required'}->{Value} ne 'no') {
+			$self->doError(205, 3, 'required',
+				       $a->{'{}required'}->{Value});
+		    }
+		}
+
+		$self->{_variable_select} = $select;
+
+		# local parameter ------------------------------
+		if ($self->{c_template}) {
+
+		    # parameter already declared
+		    $self->doError(211, 3, 'Local parameter', "\'$name\'") 
+		      if exists $self->{c_template}->{vars}->[0]->{$name};
+
+		    push @{$e_stack_top->{vars}}, $name;
+		    $self->{c_template}->{vars}->[0]->{$name} = [];
+
+		    push @{$self->{c_template}->{instructions}}, 
+		      [I_VARIABLE_START, $name, $select, $default_select, 'p'];
+		    #print "COMP: >VARIABLE_START - parameter\n";
+
+		# stylesheet parameter ------------------------------
+		} else {
+
+		    # parameter already declared
+		    $self->doError(211, 3, 'Stylesheet parameter', "\'$name\'") 
+		      if $g_stack_top->{vars}->[0]->{$name};
+
+		    # actual value
+		    $g_stack_top->{vars}->[0]->{$name}->[0]
+		      = $self->_static_eval($select);
+		    # init value
+		    $g_stack_top->{vars}->[0]->{$name}->[1]
+		      = clone($g_stack_top->{vars}->[0]->{$name}->[0]);
+		    # keep value
+		    $g_stack_top->{vars}->[0]->{$name}->[2] = 0;
+
+		    # list of params
+		    $g_stack_top->{pars}->{$name} = $required;
+ 		    #print "COMP: >GROUP_VARIABLE - parameter\n";
+		}
+
+	    }
+
 	# <stx:assign> ----------------------------------------
 	} elsif ($el->{LocalName} eq 'assign') {
 
@@ -813,8 +880,7 @@ sub start_element {
 		  unless $a->{'{}name'}->{Value} =~ /^($ATT_QNAME)$/;
 
 		my $name = $a->{'{}name'}->{Value};
-		my @n = $self->{nsc}->process_element_name($name);
-		$name = "$n[0]:$n[2]" if $n[0];
+		$name = $self->_expand_qname($name);
 
 		my $select;
 		if (exists $a->{'{}select'}) {
@@ -844,8 +910,7 @@ sub start_element {
 		  unless $a->{'{}name'}->{Value} =~ /^($ATT_QNAME)$/;
 
 		my $name = $a->{'{}name'}->{Value};
-		my @n = $self->{nsc}->process_element_name($name);
-		$name = "$n[0]:$n[2]" if $n[0];
+		$name = $self->_expand_qname($name);
 
 		# local buffer ------------------------------
 		if ($self->{c_template}) {
@@ -888,8 +953,7 @@ sub start_element {
 		  unless $a->{'{}name'}->{Value} =~ /^($ATT_QNAME)$/;
 
 		my $name = $a->{'{}name'}->{Value};
-		my @n = $self->{nsc}->process_element_name($name);
-		$name = "$n[0]:$n[2]" if $n[0];
+		$name = $self->_expand_qname($name);
 
 		my $clear = 0;
 		if (exists $a->{'{}clear'}) {
@@ -918,8 +982,7 @@ sub start_element {
 		  unless $a->{'{}name'}->{Value} =~ /^($ATT_QNAME)$/;
 
 		my $name = $a->{'{}name'}->{Value};
-		my @n = $self->{nsc}->process_element_name($name);
-		$name = "$n[0]:$n[2]" if $n[0];
+		$name = $self->_expand_qname($name);
 
 		# --- group ---
 		my $group;
@@ -929,8 +992,7 @@ sub start_element {
 		      unless $a->{'{}group'}->{Value} =~ /^$ATT_QNAME$/;
 		    $group = $a->{'{}group'}->{Value};
 
-		    my @g = $self->{nsc}->process_element_name($group);
-		    $group = "$g[0]:$g[2]" if $g[0];
+		    $group = $self->_expand_qname($group);
 		}
 
 		push @{$self->{c_template}->{instructions}}, 
@@ -944,7 +1006,7 @@ sub start_element {
 
     # literals ==================================================
     } else {
-	
+
 	if ($self->_allowed('_literal')) {
 	    my $i = [I_LITERAL_START, $el];
 
@@ -993,9 +1055,21 @@ sub end_element {
 		push @{$self->{c_template}->{instructions}}, [I_VARIABLE_END];
 		#print "COMP: >VARIABLE_END\n";
 	    } else {
-		# kontrola pres lookahead
+		# tbd
 	    }
 	    
+	# <stx:param> ----------------------------------------
+	} elsif ($el->{LocalName} eq 'param') {
+
+	    # local parameter
+	    if ($self->{c_template}) {
+		
+		push @{$self->{c_template}->{instructions}}, [I_VARIABLE_END, 'p'];
+		#print "COMP: >VARIABLE_END - parameter\n";
+	    } else {
+		# tbd
+	    }
+
 	# <stx:assign> ----------------------------------------
 	} elsif ($el->{LocalName} eq 'assign') {
 
@@ -1263,7 +1337,7 @@ sub match_priority {
 
 	if ($#steps == 0) {
 
-	    if ($last =~ /^($AXIS_NAME)?$QName$/) {
+	    if ($last =~ /^$QName$/) {
 		$p = 0;
 		
 	    } elsif ($last =~ /^processing-instruction\(?:$LITERAL\)$/) {
@@ -1272,13 +1346,13 @@ sub match_priority {
 	    } elsif ($last =~ /^cdata\(\)$/) {
 		$p = 0;
 		
-	    } elsif ($last =~ /^(?:$AXIS_NAME)?(?:$NCWild)$/) {
+	    } elsif ($last =~ /^(?:$NCWild)$/) {
 		$p = -0.25;
 		
-	    } elsif ($last =~ /^(?:$AXIS_NAME)?(?:$QNWild)$/) {
+	    } elsif ($last =~ /^(?:$QNWild)$/) {
 		$p = -0.25;
 		
-	    } elsif ($last =~ /^(?:$AXIS_NAME)?$NODE_TYPE$/) {
+	    } elsif ($last =~ /^$NODE_TYPE$/) {
 		$p = -0.5;
 	    }
 	}
@@ -1303,17 +1377,15 @@ sub tokenize {
             $NUMBER_RE| # Match digits
             \.\.| # match parent
             \.| # match current
-            $AXIS_NAME| # match axis
             $NODE_TYPE| # match node type
             processing-instruction|
             \@($NCWild|$QName|$QNWild)| # match attrib
             \$$QName| # match variable reference
-            $NCWild|$QName|$QNWild| # NCName,NodeType
+            $NCWild|$QName|$QNWild| # NCName
             \!=|<=|\-|>=|\/\/|and|or|mod|div| # multi-char seps
             [,\+=\|<>\/\(\[\]\)]| # single char seps
             (?<!(\@|\(|\[))\*| # multiply operator rules (see xpath spec)
-            (?<!::)\*|
-	    $FUNCTION|
+	    ($NCName:)?$FUNCTION|
             $ # match end of query
         )
         \s* # ignore all whitespace
@@ -1323,10 +1395,48 @@ sub tokenize {
 
         if (length($token)) {
             #print "TOK: token: $token\n";
+
+	    # resolving QNames ####################
+	    if ($token =~ m/^($NCName:)?$FUNCTION$/) {
+		$token = $self->_expand_prefixedQN($token);
+
+	    } elsif ($token =~ m/^$NCName$/ && $token !~ /^(and|or|mod|div)$/) {
+		my $c_group = $self->{g_stack}->[$#{$self->{g_stack}}];
+		if (exists $c_group->{Options}->{'default-stxpath-namespace'}) {
+		    $token = '{' 
+		      . $c_group->{Options}->{'default-stxpath-namespace'}
+			. '}' . $token;
+		}
+
+	    } elsif ($token =~ m/^$QName$/) {
+		$token = $self->_expand_prefixedQN($token);
+
+	    } elsif ($token =~ m/\^\@($QName)$/) {
+		$token = '@' . $self->_expand_prefixedQN($1);
+
+	    } elsif ($token =~ m/\^($NCName):\\*$/) {
+		$token = $self->_expand_prefixedQN("$1:lname");
+		$token =~ s/lname$/*/;
+
+	    } elsif ($token =~ m/\^\\*:($NCName|\\*)$/) {
+		$token = "{*}$1";
+
+	    } elsif ($token =~ m/\^\@($NCName):\\*$/) {
+		$token = '@' . $self->_expand_prefixedQN("$1:lname");
+		$token =~ s/lname$/*/;
+
+	    } elsif ($token =~ m/\^\@\\*:($NCName|\\*)$/) {
+		$token = '@' . "{*}$1";
+
+	    } elsif ($token =~ m/^\$($QName)$/) {
+		$token = '$' . $self->_expand_prefixedQN($1);
+
+	    }
+            #print "TOK: exp. token: $token\n";
             push @tokens, $token;
         }
     }
-    
+
     if (pos($path) < length($path)) {
         my $marker = ("." x (pos($path)-1));
         $path = substr($path, 0, pos($path) + 8) . "...";
@@ -1341,7 +1451,7 @@ sub tokenize {
 
 my $s_group = ['variable','buffer','template','procedure','include','group'];
 
-my $s_top_level = [@$s_group, 'options', 'namespace-alias'];
+my $s_top_level = [@$s_group, 'param', 'options', 'namespace-alias'];
 
 my $s_text_constr = ['text','cdata','value-of','if','else','choose','_text'];
 
@@ -1438,6 +1548,21 @@ sub _sort_templates {
 	    }
 	}
     }
+}
+
+sub _expand_qname {
+    my ($self, $qname) = @_;
+
+    my @n = $self->{nsc}->process_element_name($qname);
+    return $n[0] ? "{$n[0]}$n[2]" : $qname;
+}
+
+# default NS is ignored
+sub _expand_prefixedQN {
+    my ($self, $qname) = @_;
+
+    my @n = $self->{nsc}->process_attribute_name($qname);
+    return $n[0] ? "{$n[0]}$n[2]" : $qname;
 }
 
 # debug ----------------------------------------

@@ -5,17 +5,16 @@
 	       default-stxpath-namespace="http://test_ns"/>
 
   <stx:template match="/">
-    <stx:value-of select="concat('-', ., '-')"/>
-    <stx:text>|</stx:text>
-    <stx:process-children/>
+    <root>
+      <stx:value-of select="concat('-', ., '-')"/>
+      <stx:text>:</stx:text>
+      <stx:process-children/>
+    </root>
   </stx:template>
   
-  <stx:template match="root">
-    <stx:value-of select="namespace::"/>
-    <stx:text>|</stx:text>
-    <stx:value-of select="namespace::foo"/>
-    <stx:text>|</stx:text>
-    <stx:value-of select="count(namespace::* )"/>
+  <stx:template match="root/node">
+    <stx:variable name="var" select="."/>
+    <stx:value-of select="$var"/>
   </stx:template>
 
 </stx:transform>

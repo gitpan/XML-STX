@@ -15,10 +15,10 @@
       <stx:text>(</stx:text>
       <stx:choose>
 	<stx:when test="@id=1">
-	  <stx:value-of select="concat('1:',text())"/>
+	  <stx:value-of select="concat('1:',.)"/>
 	</stx:when>
 	<stx:when test="@id=2">
-	  <stx:value-of select="concat('2:',text())"/>
+	  <stx:value-of select="concat('2:',.)"/>
 	</stx:when>
 	<stx:otherwise>other</stx:otherwise>
       </stx:choose>

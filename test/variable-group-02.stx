@@ -3,8 +3,12 @@
 
   <stx:options strip-space="yes"/>
 
-  <stx:template match="text()[name(..)='root']">
-    [<stx:copy/>]
+  <stx:variable name="g1"/>
+
+  <stx:template match="/root">
+    <stx:copy>
+      <stx:value-of select="concat('O',$g1,'K')"/>
+    </stx:copy>
   </stx:template>
 
 </stx:transform>

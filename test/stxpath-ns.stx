@@ -1,5 +1,6 @@
 <stx:transform version="1.0" 
-	       xmlns:stx="http://stx.sourceforge.net/2002/ns">
+  xmlns:stx="http://stx.sourceforge.net/2002/ns"
+  xmlns:test="http://test_ns">
 
   <stx:options strip-space="yes"/>
 

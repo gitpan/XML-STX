@@ -7,12 +7,13 @@ use vars qw($VERSION);
 use XML::SAX::Base;
 use XML::NamespaceSupport;
 use XML::STX::Base;
+use XML::STX::TrAX;
 use XML::STX::STXPath;
 use XML::STX::Compiler;
 use Clone qw(clone);
 
-@XML::STX::ISA = qw(XML::SAX::Base XML::STX::Base);
-$VERSION = '0.07';
+@XML::STX::ISA = qw(XML::SAX::Base XML::STX::Base XML::STX::TrAX);
+$VERSION = '0.20';
 
 # --------------------------------------------------
 
@@ -58,7 +59,10 @@ sub start_document {
     $self->{Stack} = []; # ancestor stack
     $self->{CharBuffer} = ''; # to join consequent text on input
 
-    my $frame = {Type => STX_ROOT_NODE, Index => 0, Name => '/'};
+    my $frame = {Type => STX_ROOT_NODE, 
+		 Index => 0, 
+		 Name => '/',
+		};
 
     $self->_current_node([STXE_START_DOCUMENT, $frame]);
 }
@@ -286,7 +290,6 @@ sub _start_document {
     $self->{_self} = 0;
     $self->{_handlers} = [];
     $self->{_drivers} = [];
-    $self->{_sla} = []; # stored lookaheads
     $self->{_c_template} = [];
 
     $self->{ns}->pushContext;
@@ -312,6 +315,19 @@ sub _end_document {
     my $self = shift;
     #print "STX: > _end_document\n";
 
+    my $node = $self->{Stack}->[0];
+
+    # run 2nd part of template if any
+    if (defined $self->{byEnd}->{0}) {
+
+	while ($#{$self->{byEnd}->{0}} > -1) {
+	    $self->_run_template(0, undef, 0, $node);
+	    #shift @{$self->{exG}->{$node->{Index} + 1}};
+	}
+    }
+    $self->{exG}->{1} = undef;
+    $self->{byEnd}->{0} = undef;
+
     $self->{ns}->popContext;
     $self->SUPER::end_document;
 
@@ -334,16 +350,23 @@ sub _start_element {
     $el->{Index} = $index;
     $el->{Counter} = $self->{Counter}->[$index];
 
+    # string value
+    if ($self->{lookahead}->[0] == STXE_CHARACTERS) {
+	$el->{Value} = $self->{lookahead}->[1]->{Data};
+    } else {
+	$el->{Value} = '';
+    }
+
     # NS context + declarations
     $self->{ns}->pushContext;
     foreach (keys %{$el->{Attributes}}) {
 	$el->{Attributes}->{$_}->{Type} = STX_ATTRIBUTE_NODE;
 	$el->{Attributes}->{$_}->{Index} = $index + 1;
 
-	# default NS
-	if ($el->{Attributes}->{$_}->{Name} eq 'xmlns') {
-	    $self->{ns}->declare_prefix('#data_default',
-					$el->{Attributes}->{$_}->{Value});
+ 	# default NS
+ 	if ($el->{Attributes}->{$_}->{Name} eq 'xmlns') {
+ 	    $self->{ns}->declare_prefix('#data_default',
+ 					$el->{Attributes}->{$_}->{Value});
 
 	# prefixed NS
 	} elsif ($el->{Attributes}->{$_}->{Prefix} eq 'xmlns') {
@@ -776,7 +799,6 @@ sub _run_template {
     my $start = 0; # the first instruction to be processed
     my $env;       # environment (ns, condition stack, etc.)
     my $ns;        # namespaces
-    my @lAhead = @{$self->{lookahead}};
 
     # new template
     if ($ctx == 1) {
@@ -784,10 +806,8 @@ sub _run_template {
 	$env = { condition => [1], 
 		 position => $position, 
 		 ns => $i_ns,
-		 lookahead => \@lAhead,
 	       };
 	$self->{position} = $position;
-	$self->{_lAhead} = \@lAhead;
 	$ns = $i_ns;
 
     # self & procedures
@@ -795,7 +815,6 @@ sub _run_template {
 	$t = $templates->[0];
 	$env = $i_ns;
 	$self->{position} = $env->{position};
-	$self->{_lAhead} = $env->{lookahead};
 	$ns = $env->{ns};
 
     # 2nd part of template
@@ -805,12 +824,11 @@ sub _run_template {
 	$start = $byEnd->[1];
 	$env = $byEnd->[2];
 	$self->{position} = $env->{position};
-	$self->{_lAhead} = $env->{lookahead};
 	$ns = $env->{ns};
     }
 
     # new variables on recursion
-    if ($t->{'new-scope'} and ($ctx == 1)) {
+    if ($t->{'new-scope'} and ($ctx == 1 or $ctx == 2)) {
 	push @{$t->{group}->{vars}}, {};
 
 	foreach (keys %{$t->{group}->{vars}->[$#{$t->{group}->{vars}}-1]}) {
@@ -824,10 +842,10 @@ sub _run_template {
 	}
     }
     # new local variables
-    push @{$t->{vars}}, {} if $ctx == 1;
+    push @{$t->{vars}}, {} if $ctx == 1 or $ctx == 2;
 
     # new buffers on recursion
-    if ($t->{'new-scope'} and ($ctx == 1)) {
+    if ($t->{'new-scope'} and ($ctx == 1 or $ctx == 2)) {
 	push @{$t->{group}->{bufs}}, {};
 
 	foreach (keys %{$t->{group}->{bufs}->[$#{$t->{group}->{bufs}}-1]}) {
@@ -841,7 +859,7 @@ sub _run_template {
 	}
     }
     # new local buffers
-    push @{$t->{bufs}}, {} if $ctx == 1;
+    push @{$t->{bufs}}, {} if $ctx == 1 or $ctx == 2;
 
     #print "STX: running template $t->{tid}\n";
     
@@ -1205,8 +1223,6 @@ sub _run_template {
 	# I_VARIABLE_START ----------------------------------------
 	} elsif ($i->[0] == I_VARIABLE_START) {
 
-	    # tbd !!! <stx:variable/> -> empty seq. missing
-
 	    if ($i->[2] and $i->[3] == 0) {
 		$t->{vars}->[$#{$t->{vars}}]->{$i->[1]} 
 		  = [$self->_eval($i->[2], $ns)];
@@ -1263,7 +1279,7 @@ sub _run_template {
 		$self->{_text_cache} = undef;
 	    }
 
-	# I_BUFFER_START ---------------------------------------- zzz
+	# I_BUFFER_START ----------------------------------------
 	} elsif ($i->[0] == I_BUFFER_START) {
 	    $out = $self->_send_element_start($out) if exists $out->{Name};
 
@@ -1311,7 +1327,7 @@ sub _run_template {
 	    $self->{Methods} = {}; # to empty methods cached by XML::SAX::Base
  	    #print "STX: orig handler:$self->{Handler}\n";
 
-	# I_P_BUFFER ---------------------------------------- zzz
+	# I_P_BUFFER ----------------------------------------
 	} elsif ($i->[0] == I_P_BUFFER) {
 	    $out = $self->_send_element_start($out) if exists $out->{Name};
 
@@ -1435,22 +1451,25 @@ sub _send_element_start {
 
     my @declared = $self->{ns_out}->get_declared_prefixes;
     foreach (@declared) {
-	$out->{Attributes}->{"{XMLNS_URI}$_"}->{Name} 
-	  = "xmlns:$_";
-	$out->{Attributes}->{"{XMLNS_URI}$_"}->{NamespaceURI} 
-	      = XMLNS_URI;
-	$out->{Attributes}->{"{XMLNS_URI}$_"}->{LocalName} 
-	  = $_;
-	$out->{Attributes}->{"{XMLNS_URI}$_"}->{Prefix} 
-	  = 'xmlns';
-	$out->{Attributes}->{"{XMLNS_URI}$_"}->{Value} 
-	  = $self->{ns_out}->get_uri($_);
-	
-	my $mapping = {Prefix => $_, 
-		       NamespaceURI => $self->{ns_out}->get_uri($_)};
-	$self->SUPER::start_prefix_mapping($mapping);
+
+	my $key = $_ ? '{'. XMLNS_URI . "}$_" : '{}xmlns';
+
+	$out->{Attributes}->{$key}->{Name} 
+	  = $_ ? "xmlns:$_" : 'xmlns';
+	$out->{Attributes}->{$key}->{NamespaceURI} 
+	  = XMLNS_URI;
+  	$out->{Attributes}->{$key}->{LocalName} 
+  	  = $_;
+  	$out->{Attributes}->{$key}->{Prefix} 
+  	  = $_ ? 'xmlns' : '';
+  	$out->{Attributes}->{$key}->{Value} 
+  	  = $self->{ns_out}->get_uri($_);
+
+  	my $mapping = {Prefix => $_, 
+  		       NamespaceURI => $out->{Attributes}->{$key}->{Value}};
+  	$self->SUPER::start_prefix_mapping($mapping);
     }
-    
+
     $self->SUPER::start_element($out);
     push @{$self->{OutputStack}}, $out;
 
@@ -1725,34 +1744,16 @@ __END__
 
 =head1 NAME
 
-XML::STX - an STX processor
+XML::STX - a pure Perl STX processor
 
 =head1 SYNOPSIS
 
  use XML::STX;
- use SAX2Parser;  # XML::SAX::Expat, XML::SAX::PurePerl
- use SAX2Handler; # XML::SAX::Writer, XML::Handler::YAWriter 
-
-use either the common SAX API:
-
- $comp = XML::STX::Compiler->new();
- $parser_t = SAX2Parser->new(Handler => $comp);
- $stylesheet =  $parser_t->parse_uri($templ_uri);
-
- $writer = XML::SAX::Writer->new();
- $stx = XML::STX->new(Handler => $writer, Sheet => $stylesheet );
- $parser = SAX2Parser->new(Handler => $stx);
- $parser->parse_uri($data_uri);
-
-or a pseudo-pull API:
 
  $stx = XML::STX->new();
- $parser_t = SAX2Parser->new();
- $stylesheet = $stx->get_stylesheet($parser_t, $templ_uri);
 
- $parser = SAX2Parser->new();
- $handler = SAX2Handler->new();
- $stx->transform($stylesheet, $parser, $data_uri, $handler);
+ $transformer = $stx->new_transformer($stylesheet_uri);
+ $transformer->transform($source_uri);
 
 =head1 DESCRIPTION
 
@@ -1764,11 +1765,90 @@ http://stx.sourceforge.net/ for more details.
 XML::STX makes a use of XML::SAX, XML::NamespaceSupport and Clone as its 
 prerequisites. Any SAX2 parser can be used to parse an STX stylesheet. 
 XML::SAX::Expat and XML::SAX::PurePerl have been tested successfully. 
-Whatever SAX2 driver or handler can be used as a data source or an output 
-handler, respectively.
+Any PerlSAX2 compliant driver or handler can be used as a data source or an 
+output handler, respectively.
 
 The current version is an alpha version and it doesn't cover the 
 complete STX specification yet.
+
+=head1 USAGE
+
+=head2 Shortcut TrAX-like API
+
+Thanks to various shortcuts of the TrAX-like API, this is the simplest way to 
+run transformations. This can be what you want if you are happy with just one
+transformation context per stylesheet, and your input data is in files. 
+Otherwise, you may want to use some more features of this API 
+(see L<Full TrAX-like API|full trax-like api>).
+
+ use XML::STX;
+
+ $stx = XML::STX->new();
+
+ $transformer = $stx->new_transformer($stylesheet_uri);
+ $transformer->transform($source_uri);
+
+=head2 Full TrAX-like API
+
+This is the regular interface to XML::STX allowing to run independent 
+transformations for single template, bind external parameters,
+and associate drivers/handlers with input/output channels.
+
+=for html See <a href="TrAXref.html">TrAX-like API Reference</a> for more details.
+
+ use XML::STX;
+
+ $stx = XML::STX->new();
+
+ $stylesheet = $stx->new_source($stylesheet_uri);
+ $templates = $stx->new_templates($stylesheet);
+ $transformer = $templates->new_transformer();
+
+ $transformer->{Parameters} = {par1 => 5, par2 => 'foo'}';
+
+ $source = $stx->new_source($source_uri);
+ $result = $stx->new_result();
+
+ $transformer->transform($source, $result);
+
+=head2 SAX Filter
+
+ use XML::STX;
+ use SAX2Parser;
+ use SAX2Handler;
+
+ $stx = XML::STX->new();
+ $comp = XML::STX::Compiler->new();
+ $parser_t = SAX2Parser->new(Handler => $comp);
+ $stylesheet =  $parser_t->parse_uri($templ_uri);
+
+ $writer = XML::SAX::Writer->new();
+ $stx = XML::STX->new(Handler => $writer, Sheet => $stylesheet );
+ $parser = SAX2Parser->new(Handler => $stx);
+ $parser->parse_uri($data_uri);
+
+=head2 Legacy API (deprecated)
+
+ use XML::STX;
+
+ $stx = XML::STX->new();
+ $parser_t = SAX2Parser->new();
+ $stylesheet = $stx->get_stylesheet($parser_t, $templ_uri);
+
+ $parser = SAX2Parser->new();
+ $handler = SAX2Handler->new();
+ $stx->transform($stylesheet, $parser, $data_uri, $handler);
+
+=head2 Command-line Interface
+
+XML::STX is shipped with B<stxcmd.pl> script allowing to run STX transformations
+from the command line.
+
+Usage: 
+
+ stxcmd.pl [OPTIONS] <stylesheet> <data> [PARAMS]
+
+Run C<stxcmd.pl -h> for more details.
 
 =head1 AUTHOR
 

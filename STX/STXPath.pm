@@ -85,7 +85,6 @@ sub orExpr {
 	#print "EXP: orExpr: $bool->[0] or $bool2->[0] = $val\n";
 	$result = [[$val, STX_BOOLEAN]];	
     }
-
     #print "EXP: ", _dbg_print('orExpr', $result);
     return $result;
 }
@@ -95,6 +94,7 @@ sub andExpr {
     #print "EXP: andExpr ", $self->{tokens}->[0], "\n";
 
     my $result = $self->genComp($nodes);
+
     while ($self->{tokens}->[0] and
 	   $self->{tokens}->[0] eq 'and') {
 	shift @{$self->{tokens}};
@@ -106,7 +106,6 @@ sub andExpr {
 	#print "EXP: andExpr: $bool->[0] and $bool2->[0] = $val\n";
 	$result = [[$bool->[0] * $bool2->[0], STX_BOOLEAN]];	
     }
-
     #print "EXP: ", _dbg_print('andExpr', $result);
     return $result;
 }
@@ -116,23 +115,19 @@ sub genComp {
     #print "EXP: genComp ", $self->{tokens}->[0], "\n";
 
     my $result = $self->addExpr($nodes);
-    return $result unless $self->{tokens}->[0] 
-      and $self->{tokens}->[0] =~ /^=|!=|<|<=|>|>=$/;
 
-    my $resGenComp;
     while ($self->{tokens}->[0] and
-	   $self->{tokens}->[0] =~ /^=|!=|<|<=|>|>=$/) {
+	   $self->{tokens}->[0] =~ /^(=|!=|<|<=|>|>=)$/) {
 	my $compOp = shift @{$self->{tokens}};
 	#print "EXP: genComp: $compOp\n";
 
 	my $result2 = $self->addExpr($nodes);
 
 	my $comp_res = $self->_compare($result, $result2, $compOp);
- 	$resGenComp = [[$comp_res, STX_BOOLEAN]];
+ 	$result = [[$comp_res, STX_BOOLEAN]];
     }
-
-    #print "EXP: ", _dbg_print('genComp', $resGenComp);
-    return $resGenComp;
+    #print "EXP: ", _dbg_print('genComp', $result);
+    return $result;
 }
 
 sub addExpr {
@@ -142,23 +137,22 @@ sub addExpr {
     my $result = $self->multExpr($nodes);
 
     while ($self->{tokens}->[0] and
-	   $self->{tokens}->[0] =~ /^\+|-$/) {
+	   $self->{tokens}->[0] =~ /^(\+|-)$/) {
 	my $addOp = shift @{$self->{tokens}};
+	#print "EXP: addExpr: $addOp\n";
 
 	my $result2 = $self->multExpr($nodes);
-
 	my $num = $self->F_number($result);
 	my $num2 = $self->F_number($result2);
 
 	if ($addOp eq '+') {
 	    $result = [[$num->[0] + $num2->[0], STX_NUMBER]];
 
-	} elsif ($addOp eq '-') {
+	} else { # $addOp eq '-'
 	    $result = [[$num->[0] - $num2->[0], STX_NUMBER]];
 	}
 	#print "EXP: addExpr: $num->[0] $addOp $num2->[0] = $result->[0]->[0]\n";
     }
-
     #print "EXP: ", _dbg_print('addExpr', $result);
     return $result;
 }
@@ -170,9 +164,10 @@ sub multExpr {
     my $result = $self->unaryExpr($nodes);
 
     while ($self->{tokens}->[0] and 
-	   $self->{tokens}->[0] =~ /^\*|div|mod$/) {
+	   $self->{tokens}->[0] =~ /^(\*|div|mod)$/) {
 
 	my $multOp = shift @{$self->{tokens}};
+	#print "EXP: multExpr: $multOp\n";
 
 	my $result2 = $self->unaryExpr($nodes);
 	my $num = $self->F_number($result);
@@ -184,12 +179,11 @@ sub multExpr {
 	} elsif ($multOp eq 'mod') {
 	    $result = [[$num->[0] % $num2->[0], STX_NUMBER]];
 
-	} elsif ($multOp eq 'div') {
+	} else { # $multOp eq 'div'
 	    $result = [[$num->[0] / $num2->[0], STX_NUMBER]];
 	}
 	#print "EXP: multExpr: $num->[0]$multOp$num2->[0] = $result->[0]->[0]\n";
     }
-
     #print "EXP: ", _dbg_print('multExpr', $result);
     return $result;
 }
@@ -198,11 +192,9 @@ sub unaryExpr {
     my ($self, $nodes) = @_;
     #print "EXP: unaryExpr ", $self->{tokens}->[0], "\n";
 
-    my $unaryOp = undef;
-    if ($self->{tokens}->[0] eq '+' 
-	or $self->{tokens}->[0] eq '-') {
-	$unaryOp = shift @{$self->{tokens}};
-    }
+    my $unaryOp = ($self->{tokens}->[0] =~ /^(\+|-)$/) 
+      ? shift @{$self->{tokens}} : undef;
+
     my $result = $self->basicExpr($nodes);
 
     #print "EXP: ", _dbg_print('unaryExpr', $result);
@@ -230,21 +222,31 @@ sub basicExpr {
 	=~ /^($LITERAL|$NUMBER_RE|$DOUBLE_RE)$/) {
 	$result = $self->literal($nodes);
 
-    # function call
-    } elsif ($self->{tokens}->[0] =~ /^$FUNCTION$/) {
-	$result = $self->fcCall($nodes);
+    # current item
+    } elsif ($self->{tokens}->[0] eq '.') {
+    	$result = $self->currentItem($nodes);
 
     # parenthesized expression
     } elsif ($self->{tokens}->[0] eq '(') {
 	$result = $self->parExpr($nodes);
 
-    # location path
+    # data accessor
     } else {
-	$result = $self->accessPattern($nodes);
+	$result = $self->dataAccessor($nodes);
     }
 
     #print "EXP: ", _dbg_print('basicExpr', $result);
     return $result;
+}
+
+sub currentItem {
+    my ($self, $nodes) = @_;
+    #print "EXP: currentItem ", $self->{tokens}->[0], "\n";
+
+    shift @{$self->{tokens}};
+
+    my @seq = map([$_,STX_NODE], @$nodes);
+    return \@seq;
 }
 
 sub literal {
@@ -256,7 +258,7 @@ sub literal {
     if ($lit =~ /^($NUMBER_RE|$DOUBLE_RE)$/) {
 	return [[$1, STX_NUMBER]]
 
-    } elsif ($lit =~ /^['"](.*)['"]$/) {
+    } elsif ($lit =~ /^['](.*)[']$/ or $lit =~ /^["](.*)["]$/) {
 	return [[$1, STX_STRING]];
     }
 }
@@ -460,49 +462,121 @@ sub parExpr {
     return $result;
 }
 
-sub accessPattern {
+sub dataAccessor {
     my ($self, $nodes) = @_;
-    #print "EXP: accessPattern ", $self->{tokens}->[0], "\n";
+    #print "EXP: dataAccessor ", $self->{tokens}->[0], "\n";
+
+    my $result;
+    if ($self->{tokens}->[0] =~ /^@/) {
+	$result = $self->attributeNameTest($nodes);
+
+    } else { 
+	# node accessor ----------
+	if ($self->{tokens}->[0] =~ /^\$(.+)$/) {
+	    $result = $self->variable($1);
+
+	} elsif ($self->{tokens}->[0] =~ /^$FUNCTION$/) {
+	    $result = $self->fcCall($nodes);
+
+	} else { # pathAccessor
+	    $result = $self->pathAccessor($nodes);	
+	}
+
+	if ($self->{tokens}->[0] eq '/') {
+	    shift @{$self->{tokens}};
+
+	    if ($self->{tokens}->[0] =~ /^@/) {
+		# sequence is turned back to nodes
+		my @nodes2 = map($_->[0], @$result);
+		$result = $self->attributeNameTest(\@nodes2);
+
+	    } else {
+		$self->doError(6, 3, $self->{tokens}->[0]);
+	    }
+	}
+    }
+    #print "EXP: ", _dbg_print('dataAccessor', $result);
+    return $result;
+}
+
+sub pathAccessor {
+    my ($self, $nodes) = @_;
+    #print "EXP: pathAccessor ", $self->{tokens}->[0], "\n";
 
     if ($self->{tokens}->[0] eq '/') {
 	$nodes = [ $self->{STX}->{root} ];
-	$self->{axis} = 'child';
+	$self->{axis} = 1;
 	shift @{$self->{tokens}};
 
-	# '/' only
+	# '/' only shortcut
 	return [[$self->{STX}->{root}, STX_NODE]]
 	  if $self->{tokens}->[0] eq ')' or $self->{tokens}->[0] eq ',';
 
     } elsif ($self->{tokens}->[0] eq '//') {
 	$nodes = [ $self->{STX}->{root} ];
-	$self->{axis} = 'descendant';
+	$self->{axis} = 2;
 	shift @{$self->{tokens}};
 
     } else {
-	$self->{axis} = undef;
+	$self->{axis} = 1;
     }
 
-    my $result = $self->relAccess($nodes);
+    my $result = $self->relAccessor($nodes);
 
-    #print "EXP: ", _dbg_print('accessPattern', $result);
+    #print "EXP: ", _dbg_print('pathAccessor', $result);
     return $result;
 }
 
-sub relAccess {
+sub relAccessor {
     my ($self, $nodes) = @_;
-    #print "EXP: relAccess ", $self->{tokens}->[0], "\n";
-    my $result;
+    #print "EXP: relAccessor ", $self->{tokens}->[0], "\n";
 
-    if ($self->{tokens}->[0] =~ /^\$(.+)$/) {
-	$result = $self->variable($1);
+    # dynamic context required
+    $self->doError(216, 3, "\'$self->{tokens}->[0]\'") unless $nodes;
+    $nodes = $self->accessorStep($nodes);
+
+    while ($self->{tokens}->[0] and
+	   $self->{tokens}->[0] =~ /^(\/|\/\/)$/) {
+
+	# attributes to be resolved elsewhere
+	last if $self->{tokens}->[1] =~ /^@/;
+
+	my $delimiter = shift @{$self->{tokens}};
+	#print "EXP: relAccessor next: $delimiter $self->{tokens}->[0]\n";
+
+	$self->{axis} = ($delimiter eq '/')  ? 1 : 2;
+
+	$nodes = $self->accessorStep($nodes);
+    }
+    # nodes are turned to a sequence
+    my @seq = map([$_,STX_NODE], @$nodes);
+
+    #print "EXP: ", _dbg_print('relAccessor', \@seq);
+    return \@seq;
+}
+
+sub accessorStep {
+    my ($self, $nodes) = @_;
+    #print "EXP: accessorStep ", $self->{tokens}->[0], "\n";
+
+    # .. shortcut
+    if ($self->{tokens}->[0] eq '..') {
+	$self->doError(4, 3) unless ($self->{axis} == 1);
+	shift @{$self->{tokens}};
+	
+	my $parents = [];
+	foreach (@$nodes) {
+	      push @$parents, $self->{STX}->{Stack}->[$_->{Index}-1]
+		if $_->{Index} > 0;
+	}
+	return $parents;
+
+    } elsif (index($self->{tokens}->[0], '()') > 0) {
+	return $self->nodeKindTest($nodes);	
 
     } else {
-	$self->doError(216, 3, "\'$self->{tokens}->[0]\'") unless $nodes;
-	$result = $self->accessStep($nodes);
+	return $self->nodeNameTest($nodes);
     }
-
-    #print "EXP: ", _dbg_print('relAccess', $result);
-    return $result;
 }
 
 sub variable {
@@ -525,189 +599,88 @@ sub variable {
     $self->doError(16, 3, "\'$name\'");
 }
 
-sub accessStep {
+sub nodeKindTest {
     my ($self, $nodes) = @_;
-    my $next_step = 1;
-
-    while ($next_step and defined $self->{tokens}->[0]) {
-	#print "EXP: accessStep ", $self->{tokens}->[0], "\n";
-
-	# .. shortcut
-	if ($self->{tokens}->[0] eq '..') {
-	    if ($self->{axis} and $self->{axis} ne 'child') {
-		$self->doError(4, 3);
-	    } else {
-		$self->{axis} = 'parent';
-	    }
-	    shift @{$self->{tokens}};
-	    unless ($self->{tokens}->[0] eq '/') {
-		$self->doError(5, 3, $self->{tokens}->[0]);
-	    }
-	    shift @{$self->{tokens}};
-	    $nodes = $self->nodeNameTest($nodes);
-
-	# . shortcut
-	} elsif ($self->{tokens}->[0] eq '.') {
-	    $self->{axis} = 'self';
-	    $nodes = $self->nodeNameTest($nodes);
-	    
-	# axis
-	} elsif ($self->{tokens}->[0] =~ /^$AXIS_NAME$/) {
-	    my $axis = substr($self->{tokens}->[0],0,-2);
-	    $self->{axis} = $axis;
-	    shift @{$self->{tokens}};
-	    $nodes = $self->nodeNameTest($nodes);
-	    
-        # attribute
-	} elsif ($self->{tokens}->[0] =~ /^@/) {
-	    #print "EXP: attribute ", $self->{tokens}->[0], "\n";
-	    $self->{axis} = 'attributes';
-
-        # default child axis
-	} else {
-	    $nodes = $self->nodeNameTest($nodes);
-	}
-
-	#print "EXP: ==>matching: ", join(',',map(($_->{Name} or $_->{Data} or $_->{Value}),@$nodes)),"\n" if $nodes->[0];
-	#print "EXP: accessStep again $self->{tokens}->[0]\n" if $self->{tokens}->[0];
-
-	if (defined $self->{tokens}->[0] && $self->{tokens}->[0] ne ',') {
-	    if ($self->{tokens}->[0] eq '/') {
-		$self->{axis} = 'child';
-		shift @{$self->{tokens}};
-	    
-	    } elsif ($self->{tokens}->[0] eq '//') {
-		$self->{axis} = 'descendant';
-		shift @{$self->{tokens}};
-
-	    } elsif ($self->{tokens}->[0] eq ')'
-		     or substr($self->{tokens}->[0],0,1) eq '@'){
-		$next_step = 0; # ')'|'@...'
-
-	    } else {
-		#$self->doError(6, 3, $self->{tokens}->[0]); # to be checked
-		$next_step = 0; # no more tokens 
-	    }
-	} else {
-	    $next_step = 0; # no more tokens 
-	}
-    }
-
-    if ($self->{axis} eq 'attributes') {
-	$nodes = $self->attributes($nodes);
-    }
-
-    # nodes turned to a sequence
-    my @seq = map([$_,STX_NODE], @$nodes);
-    return \@seq;
-}
-
-sub nodeNameTest {
-    my ($self, $nodes) = @_;
-    $self->{tokens}->[0] || ($self->{tokens}->[0] = '');
-    #print "EXP: nodeNameTest ", $self->{tokens}->[0], "\n";
+    #print "EXP: nodeKindTest ", $self->{tokens}->[0], "\n";
 
     my $res_nodes = [];
-
-    my $pre = '#default';
-    my $lname = $self->{tokens}->[0];
-    ($pre, $lname) = split(':', $self->{tokens}->[0], 2)
-      if index($self->{tokens}->[0], ':') > -1;
-
-    $self->{axis} = 'child' unless $self->{axis};
     #print "EXP: axis: $self->{axis}\n";
-    #print "EXP: nodes: ",join(':',map(($_->{Name} or $_->{Data}),@$nodes)),"\n";
-    #print "EXP: prefix: $pre, local name: $lname\n";
 
     # child axis
-    if ($self->{axis} eq 'child') {
+    if ($self->{axis} == 1) {
 	foreach (@$nodes) {
 
-	    if ($self->{tokens}->[0] eq 'text()') {
-		if ($_->{Index} == $#{$self->{STX}->{Stack}}) {
-		    my $res = $self->_lookahead;
-		    push @$res_nodes, $res if $res > -1;
-	      }
-		
-	    } else {
-		# frame exists
-		if (@{$self->{STX}->{Stack}} > $_->{Index}+1) {
-		    my $node = $self->{STX}->{Stack}->[$_->{Index}+1];
-		    my $res = $self->_node_match($node, $pre, $lname);
-		    push @$res_nodes, $res if $res > -1;
-		}
+	    # frame exists
+	    if (@{$self->{STX}->{Stack}} > $_->{Index}+1) {
+		my $node = $self->{STX}->{Stack}->[$_->{Index}+1];
+		push @$res_nodes, $node if $self->kindTest($node) == 1;
 	    }
 	}
 
     # descendant axis	
-    } elsif ($self->{axis} eq 'descendant') {
+    } elsif ($self->{axis} == 2) {
 	foreach (@$nodes) {
 	    # scan all descendants
 	    for (my $i = $_->{Index}+1; $i < @{$self->{STX}->{Stack}}; $i++) {
 		my $node = $self->{STX}->{Stack}->[$i];
-		my $res = $self->_node_match($node, $pre, $lname);
-		push @$res_nodes, $res if $res > -1;
+		push @$res_nodes, $node if $self->kindTest($node) == 1;
 	    }
-	}
-
-    # parent axis
-    } elsif ($self->{axis} eq 'parent') {
-	foreach (@$nodes) {
-	    # frame exists
-	    if ($_->{Index} > 0) {
-		my $node = $self->{STX}->{Stack}->[$_->{Index}-1];
-		my $res = $self->_node_match($node, $pre, $lname);
-		push @$res_nodes, $res if $res > -1;
-	    }
-	}
-
-    # ancestor axis
-    } elsif ($self->{axis} eq 'ancestor') {
-	foreach (@$nodes) {
-	    # scan all ancestors
-	    for (my $i = $_->{Index}-1; $i > -1; $i--) {
-		my $node = $self->{STX}->{Stack}->[$i];
-		my $res = $self->_node_match($node, $pre, $lname);
-		push @$res_nodes, $res if ref($res);
-	    }
-	}
-
-    # self axis
-    } elsif ($self->{axis} eq 'self') {
-	$res_nodes = $nodes; 
-
-    # namespace axis
-    } elsif ($self->{axis} eq 'namespace') {
-	foreach (@$nodes) {
-	    my $res = $self->namespaces($_);
-	    push @$res_nodes, @$res;
 	}
     }
-
     shift @{$self->{tokens}};
     return $res_nodes;
 }
 
-sub attributes {
+sub nodeNameTest {
     my ($self, $nodes) = @_;
-    #print "EXP: attributes ", $self->{tokens}->[0], "\n";
+    #$self->{tokens}->[0] || ($self->{tokens}->[0] = '');
+    #print "EXP: nodeNameTest ", $self->{tokens}->[0], "\n";
 
     my $res_nodes = [];
 
-    my $att_name = substr($self->{tokens}->[0],1);
-    my $pre = '';
-    my $lname = $att_name;
-    if ($att_name =~ /:/) {
-	($pre, $lname) = split(':', $att_name);
+    # child axis
+    if ($self->{axis} == 1) {
+	foreach (@$nodes) {
+
+	    # frame exists
+	    if (@{$self->{STX}->{Stack}} > $_->{Index}+1) {
+		my $node = $self->{STX}->{Stack}->[$_->{Index}+1];
+		my $res = $self->_node_match($node);
+		push @$res_nodes, $res if $res != -1;
+	    }
+	}
+
+    # descendant axis	
+    } elsif ($self->{axis} == 2) {
+	foreach (@$nodes) {
+	    # scan all descendants
+	    for (my $i = $_->{Index}+1; $i < @{$self->{STX}->{Stack}}; $i++) {
+		my $node = $self->{STX}->{Stack}->[$i];
+		my $res = $self->_node_match($node);
+		push @$res_nodes, $res if $res != -1;
+	    }
+	}
     }
+    shift @{$self->{tokens}};
+    return $res_nodes;
+}
+
+sub attributeNameTest {
+    my ($self, $nodes) = @_;
+    #print "EXP: attributeNameTest ", $self->{tokens}->[0], "\n";
+
+    my $res_nodes = [];
 
     foreach (@{$nodes}) {
-	my $res = $self->_attribute_match($_->{Index}, $pre, $lname);
+	my $res = $self->_attribute_match($_->{Index});
 	push @$res_nodes, @$res;
     }
     shift @{$self->{tokens}};
-    #print "EXP: attributes ",join(':',map($_->{Name},@$res_nodes)),"\n";
-    return $res_nodes;
+    #print "EXP: attributeNameTest ",join(':',map($_->{Name},@$res_nodes)),"\n";
+
+    # nodes are turned to a sequence
+    my @seq = map([$_,STX_NODE], @$res_nodes);
+    return \@seq;
 }
 
 sub namespaces {
@@ -724,7 +697,7 @@ sub namespaces {
 	foreach (@prefs) {
 	    my $p = $_ eq '' ? '#default' : $_;
 	    my $uri = $self->{STX}->{ns}->get_uri($p);
-	    my $node = {Type => STX_NS_NODE, 
+	    my $node = {Type => 8, 
 			Index => scalar @{$self->{STX}->{Stack}} + 1,
 			Name => $p,
 			Value => $uri,
@@ -742,6 +715,7 @@ sub namespaces {
 # ==================================================
 # Match Pattern
 
+# pathPattern
 sub matchPath {
     my ($self, $node, $path) = @_;
     my $i = $#$path;
@@ -833,8 +807,8 @@ sub nodeTest {
     my ($self, $node) = @_;
     #print "EXP: nodeTest ", $self->{tokens}->[0], "\n";
 
-    # a faster way to find out NODE_TYPE
-    if (index($self->{tokens}->[0], '()') > 0) {
+    if (index($self->{tokens}->[0], '(') > 0 
+	or $self->{tokens}->[0] eq 'processing-instruction') {
 	return $self->kindTest($node);	
 
     } else {
@@ -846,11 +820,7 @@ sub nameTest {
     my ($self, $node) = @_;
     #print "EXP: nameTest ", $self->{tokens}->[0], "\n";
 
-    if (substr($self->{tokens}->[0],0,1) eq '@') {
-	return $self->attrNameTestMatch($node);	
-    } else {
-	return $self->nodeNameTestMatch($node);	
-    }
+    return $self->_node_match($node);
 }
 
 sub kindTest {
@@ -870,6 +840,25 @@ sub kindTest {
     } elsif ($test eq 'processing-instruction()') {
 	return 1 if $node->{Type} == 4;
 
+    } elsif ($test eq 'processing-instruction') {
+	unless ($self->{tokens}->[1] eq '('
+		and $self->{tokens}->[2] =~ /^($LITERAL)$/
+		and $self->{tokens}->[3] eq ')') {
+
+	    my $expr = $self->{tokens}->[0] . $self->{tokens}->[1] 
+	      . $self->{tokens}->[2] . $self->{tokens}->[3];
+	    $self->doError(5, 3, $expr);
+	}
+	
+	my $target = substr($self->{tokens}->[2], 1, 
+			    length($self->{tokens}->[2]) - 2);
+	shift @{$self->{tokens}};
+	shift @{$self->{tokens}};
+	shift @{$self->{tokens}};
+	$self->{tokens}->[0] = "processing-instruction:$target";
+
+	return 1 if ($node->{Type} == 4 and $node->{Target} eq $target);
+
     } elsif ($test eq 'comment()') {
 	return 1 if $node->{Type} == 5;
 
@@ -877,31 +866,6 @@ sub kindTest {
 	$self->doError(8, 3);
     }
     return -1;
-}
-
-sub nodeNameTestMatch {
-    my ($self, $node) = @_;
-    #print "EXP: nodeNameTestMatch ", $self->{tokens}->[0], "\n";
-
-    my $pre = '#default';
-    my $lname = $self->{tokens}->[0];
-    ($pre, $lname) = split(':', $self->{tokens}->[0], 2)
-      if index($self->{tokens}->[0], ':') > -1;
-
-    return $self->_node_match($node, $pre, $lname);
-}
-
-sub attrNameTestMatch {
-    my ($self, $node) = @_;
-    #print "EXP: attrNameTestMatch ", $self->{tokens}->[0], "\n";
-
-    my $att_name = substr($self->{tokens}->[0],1);
-    my $pre = '';
-    my $lname = $att_name;
-    if ($att_name =~ /:/) {
-	($pre, $lname) = split(':', $att_name);
-    }
-    return $self->_node_match($node, $pre, $lname);
 }
 
 sub predExpr {
@@ -932,24 +896,22 @@ sub predExpr {
 
 # if a stack frame matches a QName, the node is returned
 sub _node_match {
-    my ($self, $node, $pre, $lname) = @_;
+    my ($self, $node) = @_;
 
     # element or attribute node
     if ($node->{Type} == 1 or $node->{Type} == 6) {
 
-	# expand namespaces in expression
-	my $nsuri = $pre ? $pre : '#default';
-	$nsuri = $pre if $node->{Type} == 6;
-	foreach (keys %{$self->{ns}}) {
-	    $nsuri = $self->{ns}->{$_} if $pre eq $_;
-	}
-	$nsuri = '' if $nsuri eq '#default';
-	if ($nsuri eq $pre and $nsuri ne '*' and $nsuri) {
-	    $self->doError(10, 3, $pre);
+	my $nsuri = '';
+	my $lname = (substr($self->{tokens}->[0],0,1) eq '@')
+	  ? substr($self->{tokens}->[0],1) : $self->{tokens}->[0];
+
+	if ($lname =~ /^\{([^|}]+)\}(.+)/) {
+	    $nsuri = $1;
+       	    $lname = $2;
 	}
 
-	#print "EXP: path $nsuri:$lname\n";
-	#print "EXP: node $node->{NamespaceURI}:$node->{LocalName}\n";
+	#print "EXP: path {$nsuri}$lname\n";
+	#print "EXP: node {$node->{NamespaceURI}}$node->{LocalName}\n";
 	# element expanded name matches
 	if (($lname eq '*') and not($nsuri)) {
 	    #print "EXP: _node_match->*\n";
@@ -979,7 +941,7 @@ sub _node_match {
 
 # if an attribute matches QName, it's added to node-set
 sub _attribute_match {
-    my ($self, $findex, $pre, $lname) = @_;
+    my ($self, $findex) = @_;
 
     my $node = $self->{STX}->{Stack}->[$findex];
     my $attributes = [];
@@ -988,21 +950,11 @@ sub _attribute_match {
 	# attribute expanded name matches
 	foreach (keys %{$node->{Attributes}}) {
 	    #print "EXP: attribute: $_\n";
-	    my $att = $self->_node_match($node->{Attributes}->{$_},$pre,$lname);
+	    my $att = $self->_node_match($node->{Attributes}->{$_});
 	    push @$attributes, $att if ref $att;
  	}
     }
     return $attributes;
-}
-
-# if an attribute matches QName, it's added to node-set
-sub _lookahead {
-    my $self = shift;
-
-    return $self->{STX}->{_lAhead}->[1] 
-      if $self->{STX}->{_lAhead}->[0] == STXE_CHARACTERS;
-
-    return -1;
 }
 
 # resolves sequence comparisons

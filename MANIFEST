@@ -2,6 +2,7 @@ Changes
 MANIFEST
 README
 Makefile.PL
+stxcmd.pl
 STX.pm
 STX/Base.pm
 STX/Buffer.pm
@@ -9,7 +10,9 @@ STX/Compiler.pm
 STX/Stylesheet.pm
 STX/STXPath.pm
 STX/Functions.pm
-examples/stxcmd.pl
+STX/TrAX.pm
+STX/Writer.pm
+doc/TrAXref.pod
 examples/stx-filter.pl
 examples/tester.pl
 test.pl
@@ -30,6 +33,7 @@ test/buffers-local.stx
 test/buffers-recursive.stx
 test/call-procedure.stx
 test/call-procedure2.stx
+test/call-procedure3.stx
 test/cdata-no.stx
 test/cdata-out.stx
 test/cdata.stx
@@ -51,7 +55,9 @@ test/groups-named-att.stx
 test/if.stx
 test/literal-avt.stx
 test/literal.stx
+test/namespaces01.stx
 test/node-test-text.stx
+test/param-top.stx
 test/process-attributes.stx
 test/process-combined.stx
 test/process-self.stx
@@ -68,7 +74,6 @@ test/stxpath-empty.stx
 test/stxpath-get-node.stx
 test/stxpath-has-child-nodes.stx
 test/stxpath-item-at.stx
-test/stxpath-level.stx
 test/stxpath-ns.stx
 test/stxpath-position.stx
 test/stxpath-starts-with.stx
@@ -80,9 +85,12 @@ test/stxpath-translate.stx
 test/template-lookup.stx
 test/template-match1.stx
 test/template-match2.stx
+test/template-match3.stx
 test/template-match-position.stx
 test/text.stx
 test/value-of.stx
 test/value-of-att.stx
+test/value-of-path.stx
 test/variable-group-01.stx
+test/variable-group-02.stx
 test/variable-local.stx
