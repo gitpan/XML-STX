@@ -1,0 +1,66 @@
+#--------------------------------#
+# README file for XML::STX       #
+#--------------------------------#
+
+1. Description
+2. License
+3. Prerequisites
+4. Build and Install
+5. Authors
+6. Examples
+
+
+1. Description
+==============
+
+XML::STX is a pure Perl implementation of STX processor. Streaming 
+Transformations for XML (STX) is a one-pass transformation language for 
+XML documents that builds on the Simple API for XML (SAX). See 
+http://stx.sourceforge.net/ for more details.
+
+
+2. License
+==========
+
+Copyright (c) 2002-2003 Ginger Alliance. All rights reserved. This program is 
+free software; you can redistribute it and/or modify it under the same terms as 
+Perl itself.
+
+
+3. Prerequisites
+================
+
+- XML::SAX
+- XML::NamespaceSupport
+- Clone
+
+
+4. Build and Install
+====================
+
+The module builds and installs in a standard way:
+
+	perl Makefile.PL
+	make
+	make test
+	make install
+
+To install on Windows (with ActivePerl), just replace "make" with "nmake".
+
+
+5. Author
+==========
+
+Petr Cimprich <petr@gingerall.cz>, Ginger Alliance
+
+
+6. Examples
+===========
+
+stxcmd.pl
+	a command line interface to XML::STX
+	Usage: perl stxcmd.pl [-m|h|v] <stx_stylesheet> <xml_data>
+
+stx-filter.pl
+	an example of SAX-filter API
+	Usage: perl stx-filter.pl <stx_stylesheet> <xml_data>	

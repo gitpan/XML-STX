@@ -1,0 +1,25 @@
+<stx:transform version="1.0" 
+	       xmlns:stx="http://stx.sourceforge.net/2002/ns">
+
+  <stx:options strip-space="yes" 
+	       default-stxpath-namespace="http://test_ns"/>
+
+  <stx:template match="node">
+    <node>
+      <stx:value-of select="level()"/>
+      <stx:text>-</stx:text>
+      <stx:value-of select="level(.)"/>
+      <stx:text>-</stx:text>
+      <stx:value-of select="level(/root/node)"/>
+      <stx:text>-</stx:text>
+      <stx:value-of select="level(../*)"/>
+      <stx:text>-</stx:text>
+      <stx:value-of select="level(/root)"/>
+      <stx:text>-</stx:text>
+      <stx:value-of select="level(/)"/>
+      <stx:text>-</stx:text>
+      <stx:value-of select="level(get-node(level()))"/>
+    </node>
+  </stx:template>
+
+</stx:transform>

@@ -1,0 +1,72 @@
+# options --------------------
+
+default-ignore|01|0|OK
+default-text|02|0|<root >koko text<![CDATA[<&>]]></root>
+default-copy|02|0|<root ><node id="1" >koko</node><!-- comment --> text<![CDATA[<&>]]><?pi pi-content?></root>
+default-stxpath-ns|03|0|OK
+stxpath-ns|04|0|OK
+cdata|01|0|[<![CDATA[<<cdata-text>>]]>]
+cdata-yes|01|0|[ text1] [<![CDATA[<<cdata-text>>]]>] [ text2]
+cdata-no|01|0|[ text1<<cdata-text>> text2]
+
+# matching & groups --------------------
+
+template-match1|01|0|root-3node-2node-1node-2
+template-match2|01|0|root-3node-2node-2node-2
+template-match-position|01|0|<el >root<el >node</el><id >2</id><node > text1</node><cdata ><![CDATA[<<cdata-text>>]]></cdata><text > text2</text></el>
+template-lookup|01|0|root-3
+process-attributes|01|0|<n ><id >1</id></n><n ><id >2</id></n><n ><a0 >B</a0><a1 >A</a1><a3 >C</a3></n>
+groups|01|0|root.1 node.1 node.2 node.3
+groups-named|01|0|root.1 node.1 koko node.2 mato <<cdata-text>> node.3
+groups-named-att|01|0|/1 @id {koko} $id/2 @id {mato} $id/3 @a0 @a1 @a3 $a0 $a1 $a3
+
+# flow control --------------------
+
+if|01|0|<root >n:tT:Nn:t2text(mato)T:Nn::N</root>
+else|01|0|<root >1[2]OK3</root>
+choose|01|0|<root >(1:koko)(2:mato)(other)</root>
+
+# output --------------------
+
+text|01|0|A B C D
+cdata-out|01|0|<![CDATA[&]]>&
+literal|01|0|<element name="node" >literal text</element>
+literal-avt|01|0|<r avt="1+2" att-node="1" ><lit a1="3" a2="1+2=3" a3="a2/b1" ></lit></r>
+copy|02|0|<root ><node id="1" >koko</node><!-- comment --> text<![CDATA[<&>]]><?pi pi-content?></root>
+value-of|01|0|<root >text-52-5-true</root>
+value-of-att|01|0|12AC
+element|01|0|<node ><p:el xmlns:p="NS1" ><g0:el xmlns:g0="NS2" ></g0:el></p:el></node>
+element-separate|01|0|<node ><p:el xmlns:p="NS1" ></p:el></node>
+attribute|01|0|<node g0:node="9koko" xmlns:g0="NS" a1="4" ></node>
+comment|01|0|T1<!-- Comment Text:2 -->T2T3
+processing-instruction|01|0|T1<?node PI-text?>T2
+string-value1|01|0| other node types  text1 <<cdata-text>> text2 pi-content
+string-value2|01|0|koko/1|/mato/2|//B|A|C|/
+string-value3|03|0|--
+
+# STXPath --------------------
+
+node-test-text|01|0|<root >mato:mato::</root>
+stxpath-bool|03|0|<node >false-true-false-true-false</node>
+stxpath-position|01|0|<root >p:1<node >p:1</node><node >p:2</node><node >p:3</node></root>
+stxpath-get-node|03|0|<node prefix="" name="node" local-name="node" namespace="http://test_ns" ></node>
+stxpath-level|03|0|<node >2-2-2-1-1-0-2</node>
+stxpath-concat|03|0|<node >aabb-name: node ns: http://test_ns-2*5=10</node>
+stxpath-translate|03|0|<node >tata-baba-aa-baba</node>
+stxpath-has-child-nodes|01|0|<root c="true" ><node c="true" ><n c="false" ></n></node><node c="true" ><n c="false" ></n></node><n c="false" ></n><n c="false" ></n><n c="false" ></n><node c="false" ></node></root>
+stxpath-starts-with|01|0|<root >true:false:true:true</root>
+stxpath-contains|01|0|<root >true:true:false:true:true</root>
+stxpath-substring|01|0|<root >auto:uto:ut:uto::auto:234</root>
+stxpath-substring-ba|01|0|<root >k::kokom::komato:ato::</root>
+stxpath-string-length|01|0|<root >4:8:5::2</root>
+stxpath-count|01|0|<node >3:3-5:5-1:1-0:0</node>
+stxpath-empty|01|0|<node >false:false-true:true</node>
+stxpath-item-at|01|0|<node >b:b-mato:</node>
+stxpath-sublist|01|0|<node >5;3:c-e 5;2:b-c</node>
+
+# variables --------------------
+
+variable-local|01|0|<root >5:<text >name is root</text></root>
+variable-group-01|01|0|<root >9<node >123:2</node></root>
+assign|01|0|<root >1:2:OK<inner >a:b</inner>OK</root>
+recursive|05|0|<root ><list level="2" no="2" count="4" ></list><list level="2" no="3" count="3" ></list><list level="1" no="1" count="6" ></list><list-total count="3" ></list-total><li-total count="13" ></li-total></root>

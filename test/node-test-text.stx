@@ -1,0 +1,18 @@
+<stx:transform version="1.0" 
+	       xmlns:stx="http://stx.sourceforge.net/2002/ns">
+
+  <stx:options strip-space="yes"/>
+
+  <stx:template match="node[@id=2]">
+    <root>
+      <stx:value-of select="/root/node/text()"/>
+      <stx:text>:</stx:text>
+      <stx:value-of select="text()"/>
+      <stx:text>:</stx:text>
+      <stx:value-of select="node/text()"/>
+      <stx:text>:</stx:text>
+      <stx:value-of select="/root/text()"/>
+    </root>
+  </stx:template>
+  
+</stx:transform>

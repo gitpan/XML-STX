@@ -1,0 +1,28 @@
+<stx:transform version="1.0" 
+	       xmlns:stx="http://stx.sourceforge.net/2002/ns">
+
+  <stx:options strip-space="yes"/>
+
+  <stx:variable name="g1" select="(1+2)*3"/>
+
+  <stx:template match="/root">
+    <stx:copy>
+      <stx:value-of select="$g1"/>
+      <stx:process-children/>
+    </stx:copy>
+  </stx:template>
+
+  <stx:group>
+    <stx:variable name="g1" select="concat(1,2,3)"/>
+
+    <stx:template match="node[@id=1]" visibility="public">
+      <stx:copy attributes="">
+	<stx:value-of select="$g1"/>
+	<stx:variable name="g1" select="level()"/>
+	<stx:text>:</stx:text>
+	<stx:value-of select="$g1"/>
+      </stx:copy>
+    </stx:template>
+  </stx:group>
+  
+</stx:transform>
