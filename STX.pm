@@ -13,7 +13,7 @@ use XML::STX::Compiler;
 use Clone qw(clone);
 
 @XML::STX::ISA = qw(XML::SAX::Base XML::STX::Base XML::STX::TrAX);
-$VERSION = '0.21';
+$VERSION = '0.22';
 
 # --------------------------------------------------
 
@@ -328,6 +328,7 @@ sub _end_document {
     $self->{exG}->{1} = undef;
     $self->{byEnd}->{0} = undef;
 
+    pop @{$self->{Stack}};
     $self->{ns}->popContext;
     $self->SUPER::end_document;
 
@@ -998,11 +999,18 @@ sub _run_template {
 		$self->{_text_cache} = undef;
 	    }
 
-	# I_P_CHILDREN ----------------------------------------
-	} elsif ($i->[0] == I_P_CHILDREN) {
-
-	    next unless $self->{_child_nodes};
+	# I_P_CHILDREN_START ----------------------------------------
+	} elsif ($i->[0] == I_P_CHILDREN_START) {
 	    $out = $self->_send_element_start($out) if exists $out->{Name};
+
+	    my $exg = $i->[1] ? $i->[1] : undef;
+	    $self->{exG}->{$c_node->{Index} + 1} = [$exg];
+
+	    $self->{_params} = {};
+
+	# I_P_CHILDREN_END ----------------------------------------
+	} elsif ($i->[0] == I_P_CHILDREN_END) {
+	    next unless $self->{_child_nodes};
 
 	    my $fi = $c_node->{Index};
 	    # pointer to the template, the number of the next
@@ -1011,28 +1019,29 @@ sub _run_template {
 	    $self->{byEnd}->{$fi} = [[$t, $j+1, $env]];
 	    $self->{LookUp}->[$#{$self->{LookUp}}] = 1;
 
-	    my $exg = $i->[1] ? $i->[1] : undef;
-	    $self->{exG}->{$fi + 1} = [$exg];
 	    $children = 1;
 	    last;
 
-	# I_P_ATTRIBUTES ----------------------------------------
-	} elsif ($i->[0] == I_P_ATTRIBUTES) {
-	    next unless $c_node->{Type} == STX_ELEMENT_NODE;
+	# I_P_ATTRIBUTES_START ----------------------------------------
+	} elsif ($i->[0] == I_P_ATTRIBUTES_START) {
 	    $out = $self->_send_element_start($out) if exists $out->{Name};
 
 	    my $exg = $i->[1] ? $i->[1] : undef;
 	    push @{$self->{exG}->{$c_node->{Index}}}, $exg;
 
+	    $self->{_params} = {};
+
+	# I_P_ATTRIBUTES_END ----------------------------------------
+	} elsif ($i->[0] == I_P_ATTRIBUTES_END) {
+	    next unless $c_node->{Type} == STX_ELEMENT_NODE;
+
 	    $self->_process_attributes($c_node, $ns);
 
 	    pop @{$self->{exG}->{$c_node->{Index}}};
 
-	# I_P_SELF ----------------------------------------
-	} elsif ($i->[0] == I_P_SELF) {
+	# I_P_SELF_START ----------------------------------------
+	} elsif ($i->[0] == I_P_SELF_START) {
 	    $out = $self->_send_element_start($out) if exists $out->{Name};
-
-	    $self->{_self} = 1;
 
 	    # explicit group
 	    my $exg = $i->[1] ? $i->[1] : undef;
@@ -1044,6 +1053,13 @@ sub _run_template {
 	    } else {
 		$self->{_excluded_templates} = [$t->{tid}];
 	    }
+
+	    $self->{_params} = {};
+
+	# I_P_SELF_END ----------------------------------------
+	} elsif ($i->[0] == I_P_SELF_END) {
+
+	    $self->{_self} = 1;
 
 	    $self->_process_self($c_node, $ns, $env);
 
@@ -1058,15 +1074,21 @@ sub _run_template {
 	    pop @{$self->{_excluded_templates}};
 	    $self->{_self} = 0;
 
-	# I_CALL_PROCEDURE ----------------------------------------
-	} elsif ($i->[0] == I_CALL_PROCEDURE) {
+	# I_CALL_PROCEDURE_START ----------------------------------------
+	} elsif ($i->[0] == I_CALL_PROCEDURE_START) {
 	    $out = $self->_send_element_start($out) if exists $out->{Name};
 	    
 	    # explicit group
 	    my $exg = $i->[2] ? $i->[2] : undef;
 	    push @{$self->{exG}->{$c_node->{Index}}}, $exg;
 
-	    $self->_call_procedure($i->[1], $c_node, $env);
+	    $self->{_procedure_name} = $i->[1];
+	    $self->{_params} = {};
+
+	# I_CALL_PROCEDURE_END ----------------------------------------
+	} elsif ($i->[0] == I_CALL_PROCEDURE_END) {
+
+	    $self->_call_procedure($self->{_procedure_name}, $c_node, $env);
 
 	    # process-children has been called inside
  	    if ($self->{byEnd}->{$c_node->{Index}}) {
@@ -1240,7 +1262,6 @@ sub _run_template {
 		$t->{vars}->[$#{$t->{vars}}]->{$self->{_TTO}} 
 		  = [$self->{SP}->F_normalize_space([[$self->{_text_cache},
 						      STX_STRING]])];
-
 		$self->{_TTO} = undef;
 		$self->{_text_cache} = undef;
 	    }
@@ -1249,6 +1270,25 @@ sub _run_template {
 	} elsif ($i->[0] == I_VARIABLE_SCOPE_END) {
 
 	    $t->{vars}->[$#{$t->{vars}}]->{$i->[1]} = undef;
+
+	# I_PARAMETER_START ----------------------------------------
+	} elsif ($i->[0] == I_PARAMETER_START) {
+
+	    if ($self->{_params}->{$i->[1]}) {
+		$t->{vars}->[$#{$t->{vars}}]->{$i->[1]}
+		  = [$self->{_params}->{$i->[1]}];
+
+	    } elsif ($i->[4]) {
+		$self->doError(510, 3, $i->[1]);
+
+	    } elsif ($i->[2] and $i->[3] == 0) {
+		$t->{vars}->[$#{$t->{vars}}]->{$i->[1]} 
+		  = [$self->_eval($i->[2], $ns)];
+
+	    } else {
+		$self->{_TTO} = $i->[1]; # text template object
+		$self->{_text_cache} = '';
+	    }
 
 	# I_ASSIGN_START ----------------------------------------
 	} elsif ($i->[0] == I_ASSIGN_START) {
@@ -1274,6 +1314,30 @@ sub _run_template {
 		$var->{$self->{_TTO}} = 
 		  $self->{SP}->F_normalize_space([[$self->{_text_cache},
 						   STX_STRING]]);
+
+		$self->{_TTO} = undef;
+		$self->{_text_cache} = undef;
+	    }
+
+	# I_WITH_PARAM_START ----------------------------------------
+	} elsif ($i->[0] == I_WITH_PARAM_START) {
+
+	    if ($i->[2] and $i->[3] == 0) {
+		$self->{_params}->{$i->[1]} = $self->_eval($i->[2], $ns);
+
+	    } else {
+		$self->{_TTO} = $i->[1]; # text template object
+		$self->{_text_cache} = '';
+	    }
+
+	# I_WITH_PARAM_END ----------------------------------------
+	} elsif ($i->[0] == I_WITH_PARAM_END) {
+
+	    if ($self->{_TTO}) {
+
+		$self->{_params}->{$self->{_TTO}} 
+		  = $self->{SP}->F_normalize_space([[$self->{_text_cache},
+						      STX_STRING]]);
 
 		$self->{_TTO} = undef;
 		$self->{_text_cache} = undef;
@@ -1327,21 +1391,26 @@ sub _run_template {
 	    $self->{Methods} = {}; # to empty methods cached by XML::SAX::Base
  	    #print "STX: orig handler:$self->{Handler}\n";
 
-	# I_P_BUFFER ----------------------------------------
-	} elsif ($i->[0] == I_P_BUFFER) {
+	# I_P_BUFFER_START ----------------------------------------
+	} elsif ($i->[0] == I_P_BUFFER_START) {
 	    $out = $self->_send_element_start($out) if exists $out->{Name};
 
 	    my $exg = $i->[2] ? $i->[2] : undef;
 	    push @{$self->{exG}->{$c_node->{Index} + 1}}, $exg;
 
- 	    my $buf = $self->_get_objects($i->[1], 1);
-	    $self->{LookUp}->[$#{$self->{LookUp}}] = 1;
+ 	    $self->{_buffer} = $self->_get_objects($i->[1], 1)->{$i->[1]};
+	    $self->{_params} = {};
 
-	    $buf->{$i->[1]}->process();
+ 	# I_P_BUFFER_END ----------------------------------------
+ 	} elsif ($i->[0] == I_P_BUFFER_END) {
 
-	    $self->{_child_nodes} = $self->_child_nodes;
-	    pop @{$self->{LookUp}};
-	    pop @{$self->{exG}->{$c_node->{Index} + 1}};
+ 	    $self->{LookUp}->[$#{$self->{LookUp}}] = 1;
+
+ 	    $self->{_buffer}->process();
+
+ 	    $self->{_child_nodes} = $self->_child_nodes;
+ 	    pop @{$self->{LookUp}};
+ 	    pop @{$self->{exG}->{$c_node->{Index} + 1}};
 
 	# I_IF_START ----------------------------------------
 	} elsif ($i->[0] == I_IF_START) {
@@ -1586,14 +1655,15 @@ sub _get_def_template {
     my $t = {};
     $t->{tid} = 'default';
 
-    my $i_cs = [ I_COPY_START, '#all' ];
-    my $i_pc = [ I_P_CHILDREN, undef ];
-    my $i_ce = [ I_COPY_END, '#all' ];
+    my $i_cs  = [ I_COPY_START, '#all' ];
+    my $i_pcs = [ I_P_CHILDREN_START, undef ];
+    my $i_pce = [ I_P_CHILDREN_END ];
+    my $i_ce  = [ I_COPY_END, '#all' ];
 
     my $ii_e = [];
-    my $ii_p = [ $i_pc ];
+    my $ii_p = [ $i_pcs, $i_pce ];
     my $ii_c = [ $i_cs, $i_ce ];
-    my $ii_cpc = [ $i_cs, $i_pc, $i_ce ];
+    my $ii_cpc = [ $i_cs, $i_pcs, $i_pce, $i_ce ];
 
     if ($type == STX_ELEMENT_NODE or $type == STX_ROOT_NODE) {
 	if ($mode == 1) {

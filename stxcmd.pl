@@ -29,7 +29,6 @@ my $t3 = Time::HiRes::time() if $m;
 my $rc = $transformer->transform($source, $result);
 my $t4 = Time::HiRes::time() if $m;
 
-
 if ($m) {
     my $t_parse = $t2 - $t1;
     my $t_trans = $t4 - $t3;

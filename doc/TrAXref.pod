@@ -54,7 +54,7 @@ The source can also be provided as L<InputSource|inputsource> or I<uri>,
 which is turned into L<SAXSource|saxsource> object automatically
 using a default L<XML reader|xmlreader>.
 
-=item new_transformer(L<SAXSource|saxsource>) a L<Transformer|transformer>
+=item new_transformer(L<SAXSource|saxsource>) as L<Transformer|transformer>
 
 Returns a new instance of Transformer.
 The source can also be provided as L<InputSource|inputsource> or I<uri>, 
@@ -115,7 +115,7 @@ METHODS:
 
 =over
 
-=item transform(L<SAXSource|saxsource>, L<SAXResult|saxresult>?)
+=item transform(L<SAXSource|saxsource>, L<SAXResult|saxresult>?) as I<result>
 
 Performs the transformation.
 The source can also be provided as L<InputSource|inputsource> or I<uri>, 

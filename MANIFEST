@@ -58,6 +58,11 @@ test/literal.stx
 test/namespaces01.stx
 test/node-test-text.stx
 test/param-top.stx
+test/param-template1.stx
+test/param-template2.stx
+test/param-template3.stx
+test/param-template4.stx
+test/param-template5.stx
 test/process-attributes.stx
 test/process-combined.stx
 test/process-self.stx

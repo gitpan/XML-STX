@@ -412,8 +412,8 @@ sub start_element {
 		}
 
 		push @{$self->{c_template}->{instructions}}, 
-		  [I_P_CHILDREN, $group];
-		#print "COMP: >PROCESS CHILDREN\n";
+		  [I_P_CHILDREN_START, $group];
+		#print "COMP: >PROCESS_CHILDREN_START\n";
 	    }
 
 	# <stx:process-attributes> ----------------------------------------
@@ -432,8 +432,8 @@ sub start_element {
 		}
 
 		push @{$self->{c_template}->{instructions}}, 
-		  [I_P_ATTRIBUTES, $group];
-		#print "COMP: >PROCESS ATTRIBUTES\n";
+		  [I_P_ATTRIBUTES_START, $group];
+		#print "COMP: >PROCESS ATTRIBUTES START\n";
 	    }
 
 	# <stx:process-self> ----------------------------------------
@@ -454,8 +454,8 @@ sub start_element {
 		$self->{c_template}->{_self} = 1;
 
 		push @{$self->{c_template}->{instructions}}, 
-		  [I_P_SELF, $group];
-		#print "COMP: >PROCESS SELF\n";
+		  [I_P_SELF_START, $group];
+		#print "COMP: >PROCESS SELF START\n";
 	    }
 
 	# <stx:call-procedure> ----------------------------------------
@@ -483,8 +483,8 @@ sub start_element {
 		}
 
 		push @{$self->{c_template}->{instructions}}, 
-		  [I_CALL_PROCEDURE, $name, $group];
-		#print "COMP: >CALL PROCEDURE\n";
+		  [I_CALL_PROCEDURE_START, $name, $group];
+		#print "COMP: >CALL PROCEDURE START\n";
 	    }
 
 	# <stx:if> ----------------------------------------
@@ -810,7 +810,7 @@ sub start_element {
 		my $select;
 		my $default_select;
 		if (exists $a->{'{}select'}) {
-		    $self->doError(213, 3, 'select', '<stx:variable>')
+		    $self->doError(213, 3, 'select', '<stx:param>')
 		      if $a->{'{}select'}->{Value} =~ /^\{|\}$/;
 		    $select = $self->tokenize($a->{'{}select'}->{Value});
 		    $default_select = 0;
@@ -819,10 +819,10 @@ sub start_element {
 		    $default_select = 1;
 		}
 
-		my $required = 0; 
+		my $req = 0; 
 		if (exists $a->{'{}required'}) {
 		    if ($a->{'{}required'}->{Value} eq 'yes') {
-			$required = 1
+			$req = 1
 		    } elsif ($a->{'{}required'}->{Value} ne 'no') {
 			$self->doError(205, 3, 'required',
 				       $a->{'{}required'}->{Value});
@@ -842,8 +842,8 @@ sub start_element {
 		    $self->{c_template}->{vars}->[0]->{$name} = [];
 
 		    push @{$self->{c_template}->{instructions}}, 
-		      [I_VARIABLE_START, $name, $select, $default_select, 'p'];
-		    #print "COMP: >VARIABLE_START - parameter\n";
+		      [I_PARAMETER_START, $name, $select, $default_select, $req];
+		    #print "COMP: >PARAMETER_START\n";
 
 		# stylesheet parameter ------------------------------
 		} else {
@@ -862,10 +862,41 @@ sub start_element {
 		    $g_stack_top->{vars}->[0]->{$name}->[2] = 0;
 
 		    # list of params
-		    $g_stack_top->{pars}->{$name} = $required;
+		    $g_stack_top->{pars}->{$name} = $req;
  		    #print "COMP: >GROUP_VARIABLE - parameter\n";
 		}
 
+	    }
+
+	# <stx:with-param> ----------------------------------------
+	} elsif ($el->{LocalName} eq 'with-param') {
+
+	    if ($self->_allowed($el->{LocalName})) {
+		
+		$self->doError(212, 3, "<stx:$el->{LocalName}>", 'name')
+		  unless exists $el->{Attributes}->{'{}name'};
+		$self->doError(217, 3, 'name', 
+			       $a->{'{}name'}->{Value}, 'qname')
+		  unless $a->{'{}name'}->{Value} =~ /^($ATT_QNAME)$/;
+
+		my $name = $a->{'{}name'}->{Value};
+		$name = $self->_expand_qname($name);
+
+		my $select;
+		my $default_select;
+		if (exists $a->{'{}select'}) {
+		    $self->doError(213, 3, 'select', '<stx:with-param>')
+		      if $a->{'{}select'}->{Value} =~ /^\{|\}$/;
+		    $select = $self->tokenize($a->{'{}select'}->{Value});
+		    $default_select = 0;
+		} else {
+		    $select = ['""']; # the empty string
+		    $default_select = 1;
+		}
+		
+		push @{$self->{c_template}->{instructions}}, 
+		  [I_WITH_PARAM_START, $name, $select, $default_select];
+		#print "COMP: >WITH_PARAM\n";
 	    }
 
 	# <stx:assign> ----------------------------------------
@@ -996,8 +1027,8 @@ sub start_element {
 		}
 
 		push @{$self->{c_template}->{instructions}}, 
-		  [I_P_BUFFER, $name, $group];
-		#print "COMP: >PROCESS BUFFER\n";
+		  [I_P_BUFFER_START, $name, $group];
+		#print "COMP: >PROCESS BUFFER START\n";
 	    }
 
 	} else {
@@ -1046,35 +1077,59 @@ sub end_element {
 	    $self->_sort_templates($self->{Sheet}->{global});
 	    $self->{end} = 1;
 
+	# <stx:process-children> ----------------------------------------
+	} elsif ($el->{LocalName} eq 'process-children') {
+
+	    push @{$self->{c_template}->{instructions}}, [I_P_CHILDREN_END];
+	    #print "COMP: >PROCESS CHILDREN END /$el->{Name}\n";
+
+	# <stx:process-self> ----------------------------------------
+	} elsif ($el->{LocalName} eq 'process-self') {
+
+	    push @{$self->{c_template}->{instructions}}, [I_P_SELF_END];
+	    #print "COMP: >PROCESS SELF END /$el->{Name}\n";
+
+	# <stx:process-attributes> ----------------------------------------
+	} elsif ($el->{LocalName} eq 'process-attributes') {
+
+	    push @{$self->{c_template}->{instructions}}, [I_P_ATTRIBUTES_END];
+	    #print "COMP: >PROCESS ATTRIBUTES END /$el->{Name}\n";
+
+	# <stx:process-buffer> ----------------------------------------
+	} elsif ($el->{LocalName} eq 'process-buffer') {
+
+	    push @{$self->{c_template}->{instructions}}, [I_P_BUFFER_END];
+	    #print "COMP: >PROCESS BUFFER END /$el->{Name}\n";
+
+	# <stx:call-procedure> ----------------------------------------
+	} elsif ($el->{LocalName} eq 'call-procedure') {
+
+	    push @{$self->{c_template}->{instructions}}, [I_CALL_PROCEDURE_END];
+	    #print "COMP: >CALL PROCEDURE END /$el->{Name}\n";
+
 	# <stx:variable> ----------------------------------------
-	} elsif ($el->{LocalName} eq 'variable') {
+	} elsif ($el->{LocalName} =~ /^(variable|param)$/) {
 
 	    # local variable
 	    if ($self->{c_template}) {
 		
 		push @{$self->{c_template}->{instructions}}, [I_VARIABLE_END];
-		#print "COMP: >VARIABLE_END\n";
+		#print "COMP: >VARIABLE END\n";
 	    } else {
 		# tbd
 	    }
 	    
-	# <stx:param> ----------------------------------------
-	} elsif ($el->{LocalName} eq 'param') {
-
-	    # local parameter
-	    if ($self->{c_template}) {
-		
-		push @{$self->{c_template}->{instructions}}, [I_VARIABLE_END, 'p'];
-		#print "COMP: >VARIABLE_END - parameter\n";
-	    } else {
-		# tbd
-	    }
-
 	# <stx:assign> ----------------------------------------
 	} elsif ($el->{LocalName} eq 'assign') {
 
 	    push @{$self->{c_template}->{instructions}}, [I_ASSIGN_END];
 	    #print "COMP: >ASSIGN_END\n";
+
+	# <stx:with-param> ----------------------------------------
+	} elsif ($el->{LocalName} eq 'with-param') {
+
+	    push @{$self->{c_template}->{instructions}}, [I_WITH_PARAM_END];
+	    #print "COMP: >WITH_PARAM_END\n";
 
 	# <stx:group> ----------------------------------------
 	} elsif ($el->{LocalName} eq 'group') {
@@ -1175,8 +1230,8 @@ sub end_element {
 	    #print "COMP: >RESULT_BUFFER_END\n";
 	}
 
-	# end tags for empty elements (process-children/self/attributes)
-	# can be happily ignored, their emptiness is checked elsewhere
+	# end tags for empty elements can be ignored, their emptiness is 
+	# checked elsewhere
 
     # literals
     } else {
@@ -1469,7 +1524,13 @@ my $sch = {
 	   group => $s_group,
 	   template => $s_template,
 	   procedure => $s_template,
-	   'call-template' => ['with-param'],
+	   'process-children' => ['with-param'],
+	   'process-attributes' => ['with-param'],
+	   'process-self' => ['with-param'],
+	   'process-siblings' => ['with-param'],
+	   'process-document' => ['with-param'],
+	   'process-buffer' => ['with-param'],
+	   'call-procedure' => ['with-param'],
 	   'with-param' => $s_text_constr,
 	   param => $s_text_constr,
 	   copy => $s_template,

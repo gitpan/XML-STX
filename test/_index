@@ -72,7 +72,7 @@ stxpath-empty|01|0|<node >false:false-true:true</node>
 stxpath-item-at|01|0|<node >b:b-mato:</node>
 stxpath-sublist|01|0|<node >5;3:c-e 5;2:b-c</node>
 
-# variables --------------------
+# variables & parameters --------------------
 
 variable-local|01|0|<root >5:<text >name is root</text></root>
 variable-group-01|01|0|<root >9<node >123:2</node></root>
@@ -80,6 +80,11 @@ variable-group-02|01|0|<root >OK</root>
 assign|01|0|<root >1:2:OK<inner >a:b</inner>OK</root>
 recursive|05|0|<root ><list level="2" no="2" count="4" ></list><list level="2" no="3" count="3" ></list><list level="1" no="1" count="6" ></list><list-total count="3" ></list-total><li-total count="13" ></li-total></root>
 param-top|01|p1=OK p3=6|<root >OK:OK:16</root>
+param-template1|01|0|<root ><n >3:foo-n1::6:koko</n></root>
+param-template2|01|0|<root ><i >3:foo-n1::6:koko</i></root>
+param-template3|01|0|<root ><a >3:foo-n2::6:koko</a></root>
+param-template4|01|0|<root ><b >3:foo-n1::6:koko</b></root>
+param-template5|01|0|<root ><p >3:foo-n1::6:koko</p></root>
 
 # buffers --------------------
 

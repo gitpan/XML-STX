@@ -46,11 +46,16 @@ require Exporter;
 	      I_LITERAL_END
 	      I_ELEMENT_START
 	      I_ELEMENT_END
-	      I_P_CHILDREN
-	      I_P_SELF
-	      I_P_BUFFER
-	      I_P_ATTRIBUTES
-              I_CALL_PROCEDURE
+	      I_P_CHILDREN_START
+	      I_P_CHILDREN_END
+	      I_P_SELF_START
+	      I_P_SELF_END
+	      I_P_BUFFER_START
+	      I_P_BUFFER_END
+	      I_P_ATTRIBUTES_START
+	      I_P_ATTRIBUTES_END
+              I_CALL_PROCEDURE_START
+              I_CALL_PROCEDURE_END
 	      I_CHARACTERS
 	      I_COPY_START
 	      I_COPY_END
@@ -79,6 +84,9 @@ require Exporter;
               I_BUFFER_SCOPE_END
               I_RES_BUFFER_START
               I_RES_BUFFER_END
+	      I_WITH_PARAM_START
+	      I_WITH_PARAM_END
+	      I_PARAMETER_START
 
 	      $NCName
 	      $QName
@@ -129,22 +137,27 @@ sub I_LITERAL_START(){1;}
 sub I_LITERAL_END(){2;}
 sub I_ELEMENT_START(){3;}
 sub I_ELEMENT_END(){4;}
-sub I_P_CHILDREN(){5;}
-sub I_CHARACTERS(){6;}
-sub I_COPY_START(){7;}
-sub I_COPY_END(){8;}
-sub I_ATTRIBUTE_START(){9;}
-sub I_ATTRIBUTE_END(){10;}
-sub I_CDATA_START(){11;}
-sub I_CDATA_END(){12;}
-sub I_COMMENT_START(){13;}
-sub I_COMMENT_END(){14;}
-sub I_PI_START(){15;}
-sub I_PI_END(){16;}
-sub I_P_SELF(){17;}
-sub I_P_ATTRIBUTES(){18;}
-sub I_CALL_PROCEDURE(){19;}
-sub I_P_BUFFER(){20;}
+sub I_P_CHILDREN_START(){5;}
+sub I_P_CHILDREN_END(){6;}
+sub I_CHARACTERS(){7;}
+sub I_COPY_START(){8;}
+sub I_COPY_END(){9;}
+sub I_ATTRIBUTE_START(){10;}
+sub I_ATTRIBUTE_END(){11;}
+sub I_CDATA_START(){12;}
+sub I_CDATA_END(){13;}
+sub I_COMMENT_START(){14;}
+sub I_COMMENT_END(){15;}
+sub I_PI_START(){16;}
+sub I_PI_END(){17;}
+sub I_P_SELF_START(){18;}
+sub I_P_SELF_END(){19;}
+sub I_P_ATTRIBUTES_START(){20;}
+sub I_P_ATTRIBUTES_END(){21;}
+sub I_CALL_PROCEDURE_START(){22;}
+sub I_CALL_PROCEDURE_END(){23;}
+sub I_P_BUFFER_START(){24;}
+sub I_P_BUFFER_END(){25;}
 
 sub I_IF_START(){101;}
 sub I_IF_END(){102;}
@@ -162,6 +175,9 @@ sub I_BUFFER_END(){113;}
 sub I_BUFFER_SCOPE_END(){114;}
 sub I_RES_BUFFER_START(){115;}
 sub I_RES_BUFFER_END(){116;}
+sub I_WITH_PARAM_START(){117;}
+sub I_WITH_PARAM_END(){118;}
+sub I_PARAMETER_START(){119;}
 
 # tokens
 $NCName = '[A-Za-z_][\w\\.\\-]*';
@@ -286,7 +302,7 @@ sub _err_msg {
         507 => "Group named '_P' not defined",
         508 => "Called procedure _P not visible",
         509 => "_P is not valid _P for TrAX API",
-        510 => "Required parameter _P hasn't been not supplied",
+        510 => "Required parameter _P hasn't been supplied",
 	);
 
     my $msg = $msg{$no};

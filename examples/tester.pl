@@ -5,7 +5,6 @@ BEGIN {
 
 use strict;
 use XML::STX;
-use XML::SAX::PurePerl;
 use TestHandler;
 
 (@ARGV == 2 ) || die ("Usage: tester.pl stylesheet.stx data.xml\n\n");
@@ -13,14 +12,14 @@ use TestHandler;
 my $templ_uri = shift;
 my $data_uri = shift;
 
-my $parser_t = XML::SAX::PurePerl->new();
-my $parser = XML::SAX::PurePerl->new();
-
-my $handler = TestHandler->new();
 my $stx = XML::STX->new();
+my $transformer = $stx->new_transformer($templ_uri);
 
-my $templ = $stx->get_stylesheet($parser_t, $templ_uri);
-$stx->transform($templ, $parser, $data_uri, $handler);
+my $source = $stx->new_source($data_uri);
+my $handler = TestHandler->new();
+my $result = $stx->new_result($handler);
+
+$transformer->transform($source, $result);
 
 print "$handler->{result}\n";
 

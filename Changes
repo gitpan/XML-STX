@@ -1,5 +1,12 @@
 Revision history for Perl extension XML::STX.
 
+0.22 April 10, 2003
+	- stx:with-param (@name, @select, content)
+	  parameters passed with process-children,
+	  process-self, process-atributes, process-buffer,
+	  call-procedure
+	- template/procedure parameters
+
 0.21 March 25, 2003
 	- fixed a bug in returning fallback parser
 
