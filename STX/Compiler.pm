@@ -5,6 +5,7 @@ BEGIN { require warnings if $] >= 5.006; }
 use strict;
 use XML::STX::Base;
 use XML::STX::Stylesheet;
+use XML::STX::Buffer;
 use Clone qw(clone);
 
 @XML::STX::Compiler::ISA = qw(XML::STX::Base);
@@ -470,11 +471,10 @@ sub start_element {
 		# --- name ---
 		$self->doError(212, 3, '<stx:call-procedure>', 'name')
 		  unless exists $a->{'{}name'};
-
 		$self->doError(214,3,'name','<stx:call-procedure>','qname') 
 		      unless $a->{'{}name'}->{Value} =~ /^$ATT_QNAME$/;
-		my $name = $a->{'{}name'}->{Value};
 
+		my $name = $a->{'{}name'}->{Value};
 		my @n = $self->{nsc}->process_element_name($name);
 		$name = "$n[0]:$n[2]" if $n[0];
 
@@ -734,12 +734,13 @@ sub start_element {
 		
 		$self->doError(212, 3, "<stx:$el->{LocalName}>", 'name')
 		  unless exists $el->{Attributes}->{'{}name'};
-
 		$self->doError(217, 3, 'name', 
 			       $a->{'{}name'}->{Value}, 'qname')
 		  unless $a->{'{}name'}->{Value} =~ /^($ATT_QNAME)$/;
 
 		my $name = $a->{'{}name'}->{Value};
+		my @n = $self->{nsc}->process_element_name($name);
+		$name = "$n[0]:$n[2]" if $n[0];
 
 		my $select;
 		my $default_select;
@@ -759,7 +760,7 @@ sub start_element {
 		if ($self->{c_template}) {
 
 		    # variable already declared
-		    $self->doError(211, 3, 'Local', "\'$name\'") 
+		    $self->doError(211, 3, 'Local variable', "\'$name\'") 
 		      if exists $self->{c_template}->{vars}->[0]->{$name};
 
 		    push @{$e_stack_top->{vars}}, $name;
@@ -773,7 +774,7 @@ sub start_element {
 		} else {
 
 		    # variable already declared
-		    $self->doError(211, 3, 'Group', "\'$name\'") 
+		    $self->doError(211, 3, 'Group variable', "\'$name\'") 
 		      if $self->{c_group}->{vars}->[0]->{$name};
 
 		    my $keep_value = 0; 
@@ -796,7 +797,6 @@ sub start_element {
 		    $g_stack_top->{vars}->[0]->{$name}->[2]
 		      = $keep_value;
  		    #print "COMP: >GROUP_VARIABLE\n";
-
 		}
 
 	    }
@@ -808,12 +808,13 @@ sub start_element {
 		
 		$self->doError(212, 3, "<stx:$el->{LocalName}>", 'name')
 		  unless exists $el->{Attributes}->{'{}name'};
-
 		$self->doError(217, 3, 'name', 
 			       $a->{'{}name'}->{Value}, 'qname')
 		  unless $a->{'{}name'}->{Value} =~ /^($ATT_QNAME)$/;
 
 		my $name = $a->{'{}name'}->{Value};
+		my @n = $self->{nsc}->process_element_name($name);
+		$name = "$n[0]:$n[2]" if $n[0];
 
 		my $select;
 		if (exists $a->{'{}select'}) {
@@ -829,6 +830,113 @@ sub start_element {
 		#print "COMP: >ASSIGN_START\n";
 	    }
 
+
+	# <stx:buffer> ----------------------------------------
+	} elsif ($el->{LocalName} eq 'buffer') {
+
+	    if ($self->_allowed($el->{LocalName})) {
+		
+		# --- name ---
+		$self->doError(212, 3, "<stx:$el->{LocalName}>", 'name')
+		  unless exists $el->{Attributes}->{'{}name'};
+		$self->doError(217, 3, 'name', 
+			       $a->{'{}name'}->{Value}, 'qname')
+		  unless $a->{'{}name'}->{Value} =~ /^($ATT_QNAME)$/;
+
+		my $name = $a->{'{}name'}->{Value};
+		my @n = $self->{nsc}->process_element_name($name);
+		$name = "$n[0]:$n[2]" if $n[0];
+
+		# local buffer ------------------------------
+		if ($self->{c_template}) {
+
+		    # buffer already declared
+		    $self->doError(211, 3, 'Local buffer', "\'$name\'") 
+		      if exists $self->{c_template}->{bufs}->[0]->{$name};
+
+		    push @{$e_stack_top->{bufs}}, $name;
+
+		    push @{$self->{c_template}->{instructions}}, 
+		      [I_BUFFER_START, $name];
+		    #print "COMP: >BUFFER_START\n";
+
+		# group buffer ------------------------------
+		} else {
+
+		    # buffer already declared
+		    $self->doError(211, 3, 'Group buffer', "\'$name\'") 
+		      if $self->{c_group}->{bufs}->[0]->{$name};
+
+		    # new buffer
+		    my $b = XML::STX::Buffer->new($name);
+		    $g_stack_top->{bufs}->[0]->{$name} = $b;
+
+ 		    #print "COMP: >GROUP_BUFFER\n";
+		}
+	    }
+
+	# <stx:result-buffer> ----------------------------------------
+	} elsif ($el->{LocalName} eq 'result-buffer') {
+
+	    if ($self->_allowed($el->{LocalName})) {
+		
+		# --- name ---
+		$self->doError(212, 3, "<stx:$el->{LocalName}>", 'name')
+		  unless exists $el->{Attributes}->{'{}name'};
+		$self->doError(217, 3, 'name', 
+			       $a->{'{}name'}->{Value}, 'qname')
+		  unless $a->{'{}name'}->{Value} =~ /^($ATT_QNAME)$/;
+
+		my $name = $a->{'{}name'}->{Value};
+		my @n = $self->{nsc}->process_element_name($name);
+		$name = "$n[0]:$n[2]" if $n[0];
+
+		my $clear = 0;
+		if (exists $a->{'{}clear'}) {
+		    if ($a->{'{}clear'}->{Value} eq 'yes') {
+			$clear = 1;
+		    } elsif ($a->{'{}clear'}->{Value} ne 'no') {
+			$self->doError(205, 3, 'clear', $a->{'{}clear'}->{Value});
+		    }
+		}
+
+		push @{$self->{c_template}->{instructions}},
+		  [I_RES_BUFFER_START, $name, $clear];
+		#print "COMP: >RESULT_BUFFER_START\n";
+	    }
+
+	# <stx:process-buffer> ----------------------------------------
+	} elsif ($el->{LocalName} eq'process-buffer') {
+
+	    if ($self->_allowed($el->{LocalName})) {
+
+		# --- name ---
+		$self->doError(212, 3, "<stx:$el->{LocalName}>", 'name')
+		  unless exists $el->{Attributes}->{'{}name'};
+		$self->doError(217, 3, 'name', 
+			       $a->{'{}name'}->{Value}, 'qname')
+		  unless $a->{'{}name'}->{Value} =~ /^($ATT_QNAME)$/;
+
+		my $name = $a->{'{}name'}->{Value};
+		my @n = $self->{nsc}->process_element_name($name);
+		$name = "$n[0]:$n[2]" if $n[0];
+
+		# --- group ---
+		my $group;
+		if (exists $a->{'{}group'}) {
+		    $self->doError(214,3,'group','<stx:process-buffer>',
+				   'qname') 
+		      unless $a->{'{}group'}->{Value} =~ /^$ATT_QNAME$/;
+		    $group = $a->{'{}group'}->{Value};
+
+		    my @g = $self->{nsc}->process_element_name($group);
+		    $group = "$g[0]:$g[2]" if $g[0];
+		}
+
+		push @{$self->{c_template}->{instructions}}, 
+		  [I_P_BUFFER, $name, $group];
+		#print "COMP: >PROCESS BUFFER\n";
+	    }
 
 	} else {
 	    $self->doError(209, 3, "<stx:$el->{LocalName}>")
@@ -974,6 +1082,23 @@ sub end_element {
 	    push @{$self->{c_template}->{instructions}}, [I_ELSE_END];
 	    #print "COMP: >OTHERWISE_END\n";
 
+	# <stx:buffer> ----------------------------------------
+	} elsif ($el->{LocalName} eq 'buffer') {
+
+	    # local buffer
+	    if ($self->{c_template}) {
+		push @{$self->{c_template}->{instructions}}, [I_BUFFER_END];
+		#print "COMP: >BUFFER_END\n";
+
+	    } else {
+		# kontrola pres lookahead
+	    }
+
+	# <stx:result-buffer> ----------------------------------------
+	} elsif ($el->{LocalName} eq 'result-buffer') {
+
+	    push @{$self->{c_template}->{instructions}}, [I_RES_BUFFER_END];
+	    #print "COMP: >RESULT_BUFFER_END\n";
 	}
 
 	# end tags for empty elements (process-children/self/attributes)
@@ -986,14 +1111,20 @@ sub end_element {
 	#print "COMP: >LITERAL_END /$el->{Name}\n";
     }
 
-    # end of local variable visibility
     my $e = pop @{$self->{e_stack}};
+    # end of local variable visibility
     foreach (@{$e->{vars}}) {
-	push @{$self->{c_template}->{instructions}}, 
-	  [I_VARIABLE_SCOPE_END, $_];
-	$self->{c_template}->{vars}->[0]->{$_} = undef;
+	push @{$self->{c_template}->{instructions}}, [I_VARIABLE_SCOPE_END, $_];
+	#$self->{c_template}->{vars}->[0]->{$_} = undef;
 	#print "COMP: >VARIABLE_SCOPE_END $_\n";
     }
+    # end of local buffer visibility
+    foreach (@{$e->{bufs}}) {
+	push @{$self->{c_template}->{instructions}}, [I_BUFFER_SCOPE_END, $_];
+	#$self->{c_template}->{bufs}->[0]->{$_} = undef;
+	#print "COMP: >BUFFER_SCOPE_END $_\n";
+    }
+
     $self->{nsc}->popContext;
 }
 
@@ -1208,17 +1339,18 @@ sub tokenize {
 
 # structure ----------------------------------------
 
-my $s_group = ['variable','template','procedure','include','group'];
+my $s_group = ['variable','buffer','template','procedure','include','group'];
 
 my $s_top_level = [@$s_group, 'options', 'namespace-alias'];
 
 my $s_text_constr = ['text','cdata','value-of','if','else','choose','_text'];
 
 my $s_content_constr = [@$s_text_constr ,'call-procedure', 'copy',
-			  'process-attributes', 'process-self','element',
-			  'start-element','end-element', 'processing-instruction',
-			  'comment','variable','param', 'assign','for-each',
-			  '_literal','attribute'];
+			'process-attributes', 'process-self','element',
+			'start-element','end-element', 'processing-instruction',
+			'comment','variable','param', 'assign','buffer',
+			'result-buffer','process-buffer','for-each','_literal',
+			'attribute'];
 
 my $s_template = [@$s_content_constr, 'process-children'];
 
@@ -1245,6 +1377,8 @@ my $sch = {
 	   assign => $s_text_constr,
 	   text => ['_text'],
 	   cdata => ['_text'],
+	   buffer => $s_template,
+	   'result-buffer' => $s_template,
 	   _literal => $s_template,
 	  };
 

@@ -512,9 +512,11 @@ sub variable {
     shift @{$self->{tokens}};
 
     # local variable
-    my $vars = $self->{STX}->{c_template}->{vars};
-    return $vars->[$#$vars]->{$name}->[0] 
-      if $vars->[$#$vars]->{$name};
+    if (my $ct = $self->{STX}->{_c_template}->[$#{$self->{STX}->{_c_template}}]) {
+	my $vars = $ct->{vars};
+	return $vars->[$#$vars]->{$name}->[0] 
+	  if $vars->[$#$vars]->{$name};
+    }
 
     # group variable
     my $var = $self->_get_group_variable($name);
@@ -583,7 +585,8 @@ sub accessStep {
 		$next_step = 0; # ')'|'@...'
 
 	    } else {
-		$self->doError(6, 3, $self->{tokens}->[0]);
+		#$self->doError(6, 3, $self->{tokens}->[0]); # to be checked
+		$next_step = 0; # no more tokens 
 	    }
 	} else {
 	    $next_step = 0; # no more tokens 
@@ -1171,7 +1174,8 @@ sub _n_compare {
 sub _get_group_variable {
     my ($self, $name) = @_;
 
-    my $g = $self->{STX}->{c_group};
+    my $g = $self->{STX}->{c_group} ? $self->{STX}->{c_group} 
+      : $self->{STX}->{Sheet}->{dGroup};
 
     return $g->{vars}->[$#{$g->{vars}}]->{$name}->[0]
       if $g->{vars}->[$#{$g->{vars}}]->{$name};

@@ -38,6 +38,8 @@ require Exporter;
 	      STXE_START_CDATA
 	      STXE_END_CDATA
 	      STXE_COMMENT
+	      STXE_START_BUFFER
+	      STXE_END_BUFFER
 
 	      I_LITERAL_START
 	      I_LITERAL_END
@@ -45,7 +47,9 @@ require Exporter;
 	      I_ELEMENT_END
 	      I_P_CHILDREN
 	      I_P_SELF
+	      I_P_BUFFER
 	      I_P_ATTRIBUTES
+              I_CALL_PROCEDURE
 	      I_CHARACTERS
 	      I_COPY_START
 	      I_COPY_END
@@ -57,7 +61,6 @@ require Exporter;
 	      I_COMMENT_END
 	      I_PI_START
 	      I_PI_END
-              I_CALL_PROCEDURE
 	      
 	      I_IF_START
 	      I_IF_END
@@ -70,6 +73,11 @@ require Exporter;
 	      I_ELSE_END
 	      I_ELSIF_START
 	      I_ELSIF_END
+              I_BUFFER_START
+              I_BUFFER_END
+              I_BUFFER_SCOPE_END
+              I_RES_BUFFER_START
+              I_RES_BUFFER_END
 
 	      $NCName
 	      $QName
@@ -114,6 +122,8 @@ sub STXE_PI(){6;}
 sub STXE_START_CDATA(){7;}
 sub STXE_END_CDATA(){8;}
 sub STXE_COMMENT(){9;}
+sub STXE_START_BUFFER(){10;}
+sub STXE_END_BUFFER(){11;}
 
 # instructions
 sub I_LITERAL_START(){1;}
@@ -135,6 +145,7 @@ sub I_PI_END(){16;}
 sub I_P_SELF(){17;}
 sub I_P_ATTRIBUTES(){18;}
 sub I_CALL_PROCEDURE(){19;}
+sub I_P_BUFFER(){20;}
 
 sub I_IF_START(){101;}
 sub I_IF_END(){102;}
@@ -147,6 +158,11 @@ sub I_ELSE_START(){108;}
 sub I_ELSE_END(){109;}
 sub I_ELSIF_START(){110;}
 sub I_ELSIF_END(){111;}
+sub I_BUFFER_START(){112;}
+sub I_BUFFER_END(){113;}
+sub I_BUFFER_SCOPE_END(){114;}
+sub I_RES_BUFFER_START(){115;}
+sub I_RES_BUFFER_END(){116;}
 
 # tokens
 $NCName = '[A-Za-z_][\w\\.\\-]*';
@@ -252,7 +268,7 @@ sub _err_msg {
         208 => "_P instructions must not be nested",
         209 => "_P instruction not supported",
         210 => "_P - literal elements must be NS qualified outside templates",
-        211 => "_P variable _P is redeclared in the same scope",
+        211 => "_P _P is redeclared in the same scope",
         212 => "_P must contain the _P mandatory attribute",
         213 => "_P attribute of _P can't contain {...}",
         214 => "_P attribute of _P must be _P",
@@ -267,7 +283,7 @@ sub _err_msg {
         502 => "_P attribute of _P must evaluate to _P (_P)",
         503 => "Output not well-formed: </_P> expected instead of </_P>",
         504 => "Output not well-formed: </_P> found after end of document",
-        505 => "Assignment failed: variable _P not declared in this scope",
+        505 => "Assignment failed: _P _P not declared in this scope",
         506 => "Position not defined for attributes",
         507 => "Group named '_P' not defined",
         508 => "Called procedure _P not visible",

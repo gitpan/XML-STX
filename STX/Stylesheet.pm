@@ -44,6 +44,7 @@ sub new {
 		      visible => [], # visible templates
 		      groups => {},
 		      vars => [{}], # variables declared in this group
+		      bufs => [{}], # buffers declared in this group
 		     }, $class;
     return $self;
 }
@@ -62,6 +63,7 @@ sub new {
 		      group => $group,
 		      instructions => [],
 		      vars => [{}], # local variables
+		      bufs => [{}], # local buffers
 		      _attr => 0,
 		      _attr_only => 1,
 		      _self => 0,
@@ -74,7 +76,7 @@ __END__
 
 =head1 NAME
 
-XML::STX::Stylesheet - stylesheet objects for XML::STX
+XML::STX::Stylesheet/Group/Template - stylesheet objects for XML::STX
 
 =head1 SYNOPSIS
 

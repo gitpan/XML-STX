@@ -1,5 +1,12 @@
 Revision history for Perl extension XML::STX.
 
+0.07 February 14, 2003
+	- group buffers without content (stx:buffer, @name)
+	- local buffers (stx:buffer, @name)
+	- stx:result-buffer (@clear)
+	- stx:process-buffer (@group)
+	- bug fixes (variables as QNames, top-level variables)
+
 0.06 January 31, 2003
 	- stx:procedure (@name, @visibility, @new-scope)
 	- stx:call-procedure (@name, @group)

@@ -12,7 +12,7 @@ use XML::STX::Compiler;
 use Clone qw(clone);
 
 @XML::STX::ISA = qw(XML::SAX::Base XML::STX::Base);
-$VERSION = '0.06';
+$VERSION = '0.07';
 
 # --------------------------------------------------
 
@@ -211,14 +211,36 @@ sub fatal_error {
 sub xml_decl {
 }
 
+# internal ----------------------------------------
+
+sub change_stream {
+    my ($self, $event) = @_;
+    #print "STX: change_stream: $event\n";
+
+    $self->_current_node([$event]);
+}
+
 # --------------------------------------------------
 
 sub _current_node {
     my ($self, $next) = @_;
 
-    my $current = $self->{lookahead};
-    $self->{lookahead} = $next;
+    my $current;
 
+    if ($next->[0] == STXE_START_BUFFER) {
+	push @{$self->{_sla}}, $self->{lookahead};
+	$self->{lookahead} = $next;
+	return;
+
+    } elsif ($next->[0] == STXE_END_BUFFER) {
+	$current = $self->{lookahead};
+	$self->{lookahead} = pop @{$self->{_sla}};
+
+    } else {
+	$current = $self->{lookahead};
+	$self->{lookahead} = $next;
+    }
+    
     if ($current) {
 
 	if ($current->[0] == STXE_START_DOCUMENT) {
@@ -244,7 +266,6 @@ sub _current_node {
 	    $self->_comment($current->[1]);
 
 	}
-
     }
 }
 
@@ -263,6 +284,10 @@ sub _start_document {
     $self->{_g_prefix} = 0;
     $self->{_stx_element} = [];
     $self->{_self} = 0;
+    $self->{_handlers} = [];
+    $self->{_drivers} = [];
+    $self->{_sla} = []; # stored lookaheads
+    $self->{_c_template} = [];
 
     $self->{ns}->pushContext;
     # default NS for STXPath
@@ -801,6 +826,23 @@ sub _run_template {
     # new local variables
     push @{$t->{vars}}, {} if $ctx == 1;
 
+    # new buffers on recursion
+    if ($t->{'new-scope'} and ($ctx == 1)) {
+	push @{$t->{group}->{bufs}}, {};
+
+	foreach (keys %{$t->{group}->{bufs}->[$#{$t->{group}->{bufs}}-1]}) {
+
+	    $t->{group}->{bufs}->[$#{$t->{group}->{bufs}}]->{$_} 
+	      = clone($t->{group}->{bufs}->[$#{$t->{group}->{bufs}}-1]->{$_});
+
+ 	    $t->{group}->{bufs}->[$#{$t->{group}->{bufs}}]->{$_}->[0]
+ 	      = clone($t->{group}->{bufs}->[$#{$t->{group}->{bufs}}]->{$_}->[1])
+ 		unless $t->{group}->{bufs}->[$#{$t->{group}->{bufs}}]->{$_}->[2];
+	}
+    }
+    # new local buffers
+    push @{$t->{bufs}}, {} if $ctx == 1;
+
     #print "STX: running template $t->{tid}\n";
     
     my $out = {};       # out element buffer
@@ -808,7 +850,8 @@ sub _run_template {
     my $children = 0;   # interrupted by process-children
     my $skipped_if = 0; # number of nested skipped stx:if
     $env->{elsif}  = 0; # elsif (when) has already been evaluated
-    $self->{c_template} = $t;
+
+    push @{$self->{_c_template}}, $t;
     $self->{c_group} = $t->{group};
 
     # the main loop over instructions
@@ -939,6 +982,7 @@ sub _run_template {
 
 	# I_P_CHILDREN ----------------------------------------
 	} elsif ($i->[0] == I_P_CHILDREN) {
+
 	    next unless $self->{_child_nodes};
 	    $out = $self->_send_element_start($out) if exists $out->{Name};
 
@@ -1194,11 +1238,10 @@ sub _run_template {
 	} elsif ($i->[0] == I_ASSIGN_START) {
 
 	    if ($i->[2]) {
-		my $var = $self->_get_variable($i->[1]);
-		$self->doError(505, 3, $i->[1]) unless $var; 
+		my $var = $self->_get_objects($i->[1]);
+		$self->doError(505, 3, 'variable', $i->[1]) unless $var; 
 
-		$var->{$i->[1]}->[0] 
-		  = $self->_eval($i->[2], $ns);
+		$var->{$i->[1]}->[0] = $self->_eval($i->[2], $ns);
 
 	    } else {
 		$self->{_TTO} = $i->[1]; # text template object
@@ -1210,15 +1253,79 @@ sub _run_template {
 
 	    if ($self->{_TTO}) {
 
-		my $var = $self->_get_variable($self->{_TTO});
-		$self->doError(505, 3, $self->{_TTO}) unless $var; 
-		$var->{$self->{_TTO}} 
-		  = $self->{SP}->F_normalize_space([[$self->{_text_cache},
-						     STX_STRING]]);
+		my $var = $self->_get_objects($self->{_TTO});
+		$self->doError(505, 3, 'variable', $self->{_TTO}) unless $var; 
+		$var->{$self->{_TTO}} = 
+		  $self->{SP}->F_normalize_space([[$self->{_text_cache},
+						   STX_STRING]]);
 
 		$self->{_TTO} = undef;
 		$self->{_text_cache} = undef;
 	    }
+
+	# I_BUFFER_START ---------------------------------------- zzz
+	} elsif ($i->[0] == I_BUFFER_START) {
+	    $out = $self->_send_element_start($out) if exists $out->{Name};
+
+	    # new buffer
+	    my $b = XML::STX::Buffer->new($i->[1]);
+	    $t->{bufs}->[$#{$t->{bufs}}]->{$i->[1]} = $b;
+
+ 	    push @{$self->{_handlers}}, $self->{Handler};
+ 	    $self->{Handler} = $b;
+	    $self->{Methods} = {}; # to empty methods cached by XML::SAX::Base
+ 	    $self->{Handler}->init($self); # to initialize buffer
+ 	    #print "STX: new handler:$self->{Handler}\n";
+
+	# I_BUFFER_END ----------------------------------------
+	} elsif ($i->[0] == I_BUFFER_END) {
+	    $out = $self->_send_element_start($out) if exists $out->{Name};
+
+ 	    $self->{Handler} = pop @{$self->{_handlers}};
+	    $self->{Methods} = {}; # to empty methods cached by XML::SAX::Base
+ 	    #print "STX: orig handler:$self->{Handler}\n";
+
+	# I_BUFFER_SCOPE_END ----------------------------------------
+	} elsif ($i->[0] == I_BUFFER_SCOPE_END) {
+
+	    $t->{bufs}->[$#{$t->{bufs}}]->{$i->[1]} = undef;
+
+ 	# I_RES_BUFFER_START ----------------------------------------
+ 	} elsif ($i->[0] == I_RES_BUFFER_START) {
+	    $out = $self->_send_element_start($out) if exists $out->{Name};
+
+ 	    my $buf = $self->_get_objects($i->[1], 1);
+ 	    $self->doError(505, 3, 'buffer', $i->[1]) unless $buf; 
+
+ 	    push @{$self->{_handlers}}, $self->{Handler};
+ 	    $self->{Handler} = $buf->{$i->[1]};
+	    $self->{Methods} = {}; # to empty methods cached by XML::SAX::Base
+ 	    $self->{Handler}->init($self, $i->[2]); # to initialize buffer
+ 	    #print "STX: new handler:$self->{Handler}\n";
+
+ 	# I_RES_BUFFER_END ----------------------------------------
+ 	} elsif ($i->[0] == I_RES_BUFFER_END) {
+	    $out = $self->_send_element_start($out) if exists $out->{Name};
+
+ 	    $self->{Handler} = pop @{$self->{_handlers}};
+	    $self->{Methods} = {}; # to empty methods cached by XML::SAX::Base
+ 	    #print "STX: orig handler:$self->{Handler}\n";
+
+	# I_P_BUFFER ---------------------------------------- zzz
+	} elsif ($i->[0] == I_P_BUFFER) {
+	    $out = $self->_send_element_start($out) if exists $out->{Name};
+
+	    my $exg = $i->[2] ? $i->[2] : undef;
+	    push @{$self->{exG}->{$c_node->{Index} + 1}}, $exg;
+
+ 	    my $buf = $self->_get_objects($i->[1], 1);
+	    $self->{LookUp}->[$#{$self->{LookUp}}] = 1;
+
+	    $buf->{$i->[1]}->process();
+
+	    $self->{_child_nodes} = $self->_child_nodes;
+	    pop @{$self->{LookUp}};
+	    pop @{$self->{exG}->{$c_node->{Index} + 1}};
 
 	# I_IF_START ----------------------------------------
 	} elsif ($i->[0] == I_IF_START) {
@@ -1275,8 +1382,11 @@ sub _run_template {
 
     if ($t->{'new-scope'} and not($children)) {
 	pop @{$t->{group}->{vars}};
+	pop @{$t->{group}->{bufs}};
     }
     pop @{$t->{vars}} unless $children;
+    pop @{$t->{bufs}} unless $children;
+    pop @{$self->{_c_template}};
 }
 
 sub _expand {
@@ -1351,6 +1461,7 @@ sub _send_element_end {
     my ($self, $out) = @_;
 
     $self->SUPER::end_element($out);
+
     $self->{ns_out}->popContext;
     my $os =  pop @{$self->{OutputStack}};
 
@@ -1495,21 +1606,27 @@ sub _get_def_template {
     return $t;
 }
 
-sub _get_variable {
-    my ($self, $name) = @_;
+# dynamic retrieval of either variable or buffer sss
+sub _get_objects {
+    my ($self, $name, $type) = @_;
 
-    # local variable
-    return $self->{c_template}->{vars}->[$#{$self->{c_template}->{vars}}]
-      if $self->{c_template}->{vars}->[$#{$self->{c_template}->{vars}}]->{$name};
+    my $tp = $type ? 'bufs' : 'vars';
+    my $ct = $self->{_c_template}->[$#{$self->{_c_template}}];
 
+    # local object
+    return $ct->{$tp}->[$#{$ct->{$tp}}]
+      if $ct->{$tp}->[$#{$ct->{$tp}}]->{$name};
+
+    # current group
     my $g = $self->{c_group};
-    return $g->{vars}->[$#{$g->{vars}}]
-      if $g->{vars}->[$#{$g->{vars}}]->{$name};
+    return $g->{$tp}->[$#{$g->{$tp}}]
+      if $g->{$tp}->[$#{$g->{$tp}}]->{$name};
 
+    # descendant groups
     while ($g->{group}) {
 	$g = $g->{group};
-	return $g->{vars}->[$#{$g->{vars}}]
-	  if $g->{vars}->[$#{$g->{vars}}]->{$name};
+	return $g->{$tp}->[$#{$g->{$tp}}]
+	  if $g->{$tp}->[$#{$g->{$tp}}]->{$name};
     }
     return undef;
 }
@@ -1650,7 +1767,7 @@ XML::SAX::Expat and XML::SAX::PurePerl have been tested successfully.
 Whatever SAX2 driver or handler can be used as a data source or an output 
 handler, respectively.
 
-The current version (0.05) is an alpha version and it doesn't cover the 
+The current version is an alpha version and it doesn't cover the 
 complete STX specification yet.
 
 =head1 AUTHOR

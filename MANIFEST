@@ -4,6 +4,7 @@ README
 Makefile.PL
 STX.pm
 STX/Base.pm
+STX/Buffer.pm
 STX/Compiler.pm
 STX/Stylesheet.pm
 STX/STXPath.pm
@@ -22,6 +23,11 @@ test/_data05.xml
 test/_data06.xml
 test/assign.stx
 test/attribute.stx
+test/buffers01.stx
+test/buffers-clear.stx
+test/buffers-group.stx
+test/buffers-local.stx
+test/buffers-recursive.stx
 test/call-procedure.stx
 test/call-procedure2.stx
 test/cdata-no.stx

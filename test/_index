@@ -75,3 +75,10 @@ variable-local|01|0|<root >5:<text >name is root</text></root>
 variable-group-01|01|0|<root >9<node >123:2</node></root>
 assign|01|0|<root >1:2:OK<inner >a:b</inner>OK</root>
 recursive|05|0|<root ><list level="2" no="2" count="4" ></list><list level="2" no="3" count="3" ></list><list level="1" no="1" count="6" ></list><list-total count="3" ></list-total><li-total count="13" ></li-total></root>
+
+# buffers --------------------
+buffers01|01|0|<root >:<e >foo</e><n a="1" ></n><n a="2" ></n><n a="3" ></n></root>
+buffers-group|01|0|<root >:<e >hoo</e><e >foo</e></root>
+buffers-clear|01|0|<root >e:ef:g</root>
+buffers-local|01|0|<root >:i2eG2:i1eG1</root>
+buffers-recursive|05|0|<l i="2" >:[i.1i.2i.3]<l i="3" >[:[i.1i.2i.3i.4]]</l>[i.4]<l i="3" >[:[i.1i.2i.3]]</l>[i.5i.6]</l>
