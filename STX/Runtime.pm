@@ -15,6 +15,7 @@ use Clone qw(clone);
 # --------------------------------------------------
 
 sub new {
+    my $timeI = 0;
     my $proto = shift;
     my $class = ref($proto) || $proto;
     my $options = ($#_ == 0) ? shift : { @_ };
@@ -60,17 +61,10 @@ sub start_element {
     my $el = shift;
     #print "STX: start_element: $el->{Name}\n";
 
-    my $frame = {
-		 Type => STX_ELEMENT_NODE,
-		 Name => $el->{Name},
-		 Attributes => $el->{Attributes},
-		 NamespaceURI => $el->{NamespaceURI},
-		 Prefix => $el->{Prefix},
-		 LocalName => $el->{LocalName},
-		 ID => $self->{nodeID}++,
-		};
+    $el->{Type} = STX_ELEMENT_NODE;
+    $el->{ID} = $self->{nodeID}++;
 
-    $self->_current_node([STXE_START_ELEMENT, $frame]);
+    $self->_current_node([STXE_START_ELEMENT, $el]);
 }
 
 sub end_element {
@@ -90,14 +84,10 @@ sub characters {
 	$self->{lookahead}->[1]->{Data} .= $char->{Data};
 	
     } else {
-	my $type = $self->{CDATA} ? STX_CDATA_NODE : STX_TEXT_NODE;
-	my $frame = {
-		     Type => $type,
-		     Data => $char->{Data},
-		     ID => $self->{nodeID}++,
-		    };
+	$char->{Type} = $self->{CDATA} ? STX_CDATA_NODE : STX_TEXT_NODE;
+	$char->{ID} = $self->{nodeID}++;
 
-	$self->_current_node([STXE_CHARACTERS, $frame]);
+	$self->_current_node([STXE_CHARACTERS, $char]);
     }
 }
 
@@ -106,14 +96,10 @@ sub processing_instruction {
     my $pi = shift;
     #print "STX: pi: $pi->{Target}\n";
 
-    my $frame = {
-		 Type => STX_PI_NODE,
-		 Target => $pi->{Target},
-		 Data => $pi->{Data},
-		 ID => $self->{nodeID}++,
-		};
+    $pi->{Type} = STX_PI_NODE;
+    $pi->{ID} = $self->{nodeID}++;
 
-    $self->_current_node([STXE_PI, $frame]);
+    $self->_current_node([STXE_PI, $pi]);
 }
 
 sub ignorable_whitespace {
@@ -161,13 +147,10 @@ sub comment {
     my $comment = shift;
     #print "STX: comment: $comment->{Data}\n";
 
-    my $frame = {
-		 Type => STX_COMMENT_NODE,
-		 Data => $comment->{Data},
-		 ID => $self->{nodeID}++,
-		};
+    $comment->{Type} =  STX_COMMENT_NODE;
+    $comment->{ID} = $self->{nodeID}++;
 
-    $self->_current_node([STXE_COMMENT, $frame]);
+    $self->_current_node([STXE_COMMENT, $comment]);
 }
 
 sub start_dtd {
@@ -269,6 +252,7 @@ sub _start_document {
     $self->{Stack} = []; # ancestor stack
     $self->{Counter} = []; # position()
     $self->{byEnd} = {}; # stack for instructions after process-children
+    $self->{byEndSib} = {}; # stack for instructions after process-siblings
 
     $self->{OutputStack} ||= []; # output stack
     $self->{LookUp} ||= [1]; # lookup for templates
@@ -287,7 +271,7 @@ sub _start_document {
     $self->{ns}->pushContext;
 
     # counter
-    $self->{Counter}->[0] = {};
+    #$self->{Counter}->[0] = {};
     $self->_counter(0, '/root', '/node');
 
     $self->SUPER::start_document;
@@ -312,7 +296,7 @@ sub _end_document {
 	    #shift @{$self->{exG}->{$node->{Index} + 1}};
 	}
     }
-    $self->{exG}->{1} = undef;
+    $self->{exG}->{1} = undef; #TBD: perhaps needless
     $self->{byEnd}->{0} = undef;
 
     pop @{$self->{Stack}};
@@ -325,10 +309,10 @@ sub _end_document {
 
 sub _start_element {
     my ($self, $el) = @_;
-    #print "STX: > _start_element: $el->{Name}\n";
+    #print "STX: > _start_element: $el->{Name}\n"; xxx
 
     my $index = scalar @{$self->{Stack}};
-    $self->{Counter}->[$index] or $self->{Counter}->[$index] = {};
+    #$self->{Counter}->[$index] or $self->{Counter}->[$index] = {};
 
     $el->{Prefix} = '' unless defined $el->{Prefix};
     $self->_counter($index, '/node', '/star', "$el->{Prefix}:/star", 
@@ -368,6 +352,33 @@ sub _start_element {
     }
  
     push @{$self->{Stack}}, $el;
+
+    # process-siblings stuff ------------------------------ sss
+    #print "-s->$el->{Name}:$index\n";
+    if (defined $self->{byEndSib}->{$index}->[-1]) {
+	my $while = $self->{byEndSib}->{$index}->[-1]->[3];
+	my $until = $self->{byEndSib}->{$index}->[-1]->[4];
+
+	my $r_wh = [1, 1];
+	$r_wh = $self->{SP}->match($el, $while, [0], $el->{inScopeNS}, {})
+	  if defined $while;
+	    
+	my $r_un = [0, 1];
+	$r_un = $self->{SP}->match($el, $until, [0], $el->{inScopeNS}, {})
+	  if defined $until;
+
+	my $end = ($r_wh->[0] ? 0 : 1) + $r_un->[0];
+	#print ">>$r_wh->[0]:$r_un->[0]:$end\n";
+
+	if ($end) {
+	    #print "STX: sibling doesn't match: running the 2nd part\n";
+	    $self->_run_template(4, undef, $index, $el);
+	    #shift @{$self->{exG}->{$index + 1}};
+	    
+	    pop @{$self->{_params}};
+	}
+    }
+
     push @{$self->{LookUp}}, 0;
     $self->_process;
 }
@@ -378,7 +389,17 @@ sub _end_element {
     my $node = $self->{Stack}->[-1];
     #print "STX: > _end_element $node->{Name} ($node->{Index})\n";
 
-    # run 2nd part of template if any
+    # process-siblings stuff ------------------------------ zzz
+    #print "-e->$node->{Name}:$node->{Index}\n";
+    if (defined $self->{byEndSib}->{$node->{Index} + 1}->[-1]) {
+	#print "STX: end of siblings: running the 2nd part\n";
+	$self->_run_template(4, undef, $node->{Index} + 1, $node);
+	#shift @{$self->{exG}->{$node->{Index} + 1}};
+	shift @{$self->{byEndSib}->{$node->{Index} + 1}};
+	pop @{$self->{_params}};
+    }
+
+    # process-children stuff ------------------------------
     if (defined $self->{byEnd}->{$node->{Index}}) {
 
 	while ($#{$self->{byEnd}->{$node->{Index}}} > -1) {
@@ -391,7 +412,7 @@ sub _end_element {
     $self->{exG}->{$node->{Index} + 1} = undef;
     $self->{byEnd}->{$node->{Index}} = undef;
 
-    # cleaning counters
+    # cleaning counters ------------------------------
     my $index = scalar @{$self->{Stack}};
     $self->{Counter}->[$index] = {};
 
@@ -409,7 +430,7 @@ sub _characters {
       and $char->{Data} =~ /^\s*$/;
 
     my $index = scalar @{$self->{Stack}};
-    $self->{Counter}->[$index] or $self->{Counter}->[$index] = {};
+    #$self->{Counter}->[$index] or $self->{Counter}->[$index] = {};
 
     $self->_counter($index, '/node', '/text');
     $self->_counter($index, '/cdata') if $self->{CDATA};
@@ -454,7 +475,7 @@ sub _comment {
     #print "STX: > _comment: $comment->{Data}\n";
 
     my $index = scalar @{$self->{Stack}};
-    $self->{Counter}->[$index] or $self->{Counter}->[$index] = {};
+    #$self->{Counter}->[$index] or $self->{Counter}->[$index] = {};
 
     $self->_counter($index, '/node', '/comment');
 
@@ -492,6 +513,10 @@ sub _process {
 #     $self->_counterDBG;
 #     $self->_nsDBG;
 #     $self->_grpDBG;
+
+    # for debug & testing
+    use Time::HiRes;
+    my $t0 = Time::HiRes::time();
 
     if ($self->{LookUp}->[-2]) {
 
@@ -538,17 +563,16 @@ sub _process {
 	    my $k = $templates->[0]->{_pos_key}->{step}->[0] 
 	      ? $self->_counter_key($templates->[0]->{_pos_key}->{step}->[0])
 		: '/root';
-	    my $pos = $self->{Counter}->[$#{$self->{Stack}}]->{$k};
 
-	    $self->_run_template(1, $templates, $ns, $node, $pos);
+	    $self->_run_template(1, $templates, $ns, $node, 
+				 $self->{Counter}->[$#{$self->{Stack}}]->{$k});
 
         # default rule is applied
 	} else {
 	    #print "STX: default rule\n";
 	    $node->{Group} = [$g];
 
-	    my $t = $self->_get_def_template;
-	    $self->_run_template(1, [$t], $ns, $node);
+	    $self->_run_template(1, [$self->_get_def_template], $ns, $node);
 	}
 
     } else {
@@ -560,6 +584,9 @@ sub _process {
 	     {$self->{exG}->{$#{$self->{Stack}}+1}->[-1]} 
 	     : $self->{Stack}->[-2]->{Group}->[-1]];
     }
+
+    # for debug & testing
+    $self->{_time_process} += Time::HiRes::time() - $t0;
 }
 
 sub _process_attributes {
@@ -794,7 +821,16 @@ sub _run_template {
 	$self->{position} = $env->{position};
 	$ns = $env->{ns};
 
-    # 2nd part of template
+    # 2nd part of template after stx:process-siblings
+    } elsif ($ctx == 4) {
+	my $byEnd = pop @{$self->{byEndSib}->{$i_ns}};
+	$t = $byEnd->[0];
+	$start = $byEnd->[1];
+	$env = $byEnd->[2];
+	$self->{position} = $env->{position};
+	$ns = $env->{ns};
+
+    # 2nd part of template after stx:process-children
     } else {
 	my $byEnd = shift @{$self->{byEnd}->{$i_ns}};
 	$t = $byEnd->[0];
@@ -843,6 +879,7 @@ sub _run_template {
     my $out = {};       # out element buffer
     my $text = '';      # out text buffer
     my $children = 0;   # interrupted by process-children
+    my $siblings = 0;   # interrupted by process-siblings
     my $skipped_if = 0; # number of nested skipped stx:if
     $env->{elsif}  = 0; # elsif (when) has already been evaluated
 
@@ -879,45 +916,19 @@ sub _run_template {
 	if ($i->[0] == I_LITERAL_START) {
 	    $out = $self->_send_element_start($out) if exists $out->{Name};
 
-	    $out->{Name} = $i->[1]->{Name};
-	    $out->{LocalName} = $i->[1]->{LocalName};
-	    $out->{Prefix} = $i->[1]->{Prefix}
-	      if exists $i->[1]->{Prefix};
-	    $out->{NamespaceURI} = $i->[1]->{NamespaceURI}
-	      if exists $i->[1]->{NamespaceURI};
+	    $out = exists $i->[1]->{Attributes} ? clone($i->[1]) : $i->[1];
 
-	    $out->{Attributes} = clone($i->[1]->{Attributes})
-	      if exists $i->[1]->{Attributes};
-
- 	    foreach (keys %{$out->{Attributes}}) {
-		$out->{Attributes}->{$_}->{Name} 
-		  = $out->{Attributes}->{$_}->{Name};
-		$out->{Attributes}->{$_}->{LocalName} 
-		  = $out->{Attributes}->{$_}->{LocalName};
-		$out->{Attributes}->{$_}->{Prefix} 
-		  = $out->{Attributes}->{$_}->{Prefix}
-		    if exists $out->{Attributes}->{$_}->{Prefix};  
-		$out->{Attributes}->{$_}->{NamespaceURI} 
-		  = $out->{Attributes}->{$_}->{NamespaceURI}
-		    if exists $out->{Attributes}->{$_}->{NamespaceURI};
-		$out->{Attributes}->{$_}->{Value} 
-		  = $self->_expand($out->{Attributes}->{$_}->{Value}, $ns)
-		    if exists $out->{Attributes}->{$_}->{Value};  
-	    }
+  	    foreach (keys %{$out->{Attributes}}) {
+ 		$out->{Attributes}->{$_}->{Value} 
+ 		  = $self->_expand($out->{Attributes}->{$_}->{Value}, $ns)
+ 		    if exists $out->{Attributes}->{$_}->{Value};  
+ 	    }
 
 	# I_LITERAL_END ----------------------------------------
 	} elsif ($i->[0] == I_LITERAL_END) {
 	    $out = $self->_send_element_start($out) if exists $out->{Name};
 
-	    $out->{Name} = $i->[1]->{Name};
-	    $out->{LocalName} = $i->[1]->{LocalName};
-	    $out->{Prefix} = $i->[1]->{Prefix}
-	      if exists $i->[1]->{Prefix};
-	    $out->{NamespaceURI} = $i->[1]->{NamespaceURI}
-	      if exists $i->[1]->{NamespaceURI};
-
-	    $out = $self->_send_element_end($out);
-
+	    $out = $self->_send_element_end($i->[1]);
 
 	# I_ELEMENT_START ----------------------------------------
 	} elsif ($i->[0] == I_ELEMENT_START) {
@@ -995,6 +1006,33 @@ sub _run_template {
 	    $self->{LookUp}->[-1] = 1;
 
 	    $children = 1;
+	    last;
+
+	# I_P_SIBLINGS_START ----------------------------------------
+	} elsif ($i->[0] == I_P_SIBLINGS_START) {
+	    $out = $self->_send_element_start($out) if exists $out->{Name};
+
+	    my $exg = $i->[1] ? $i->[1] : undef;
+	    $self->{exG}->{$c_node->{Index}} = [$exg];
+	    push @{$self->{_params}}, {};
+
+	# I_P_SIBLINGS_END ---------------------------------------- xxx
+	} elsif ($i->[0] == I_P_SIBLINGS_END) {
+
+	    my $fi = $c_node->{Index};
+	    # pointer to the template, the number of the next
+	    # instruction, and environment is put to 'byEnd' stack
+
+	    if (ref $self->{byEndSib}->{$fi}) {
+		push @{$self->{byEndSib}->{$fi}}, 
+		  [$t, $j+1, $env, $i->[1], $i->[2]];
+
+	    } else {
+		$self->{byEndSib}->{$fi} = [[$t, $j+1, $env, $i->[1], $i->[2]]];
+	    }
+
+	    $self->{LookUp}->[-1] = 1;
+	    $siblings = 1;
 	    last;
 
 	# I_P_ATTRIBUTES_START ----------------------------------------
@@ -1102,12 +1140,12 @@ sub _run_template {
 	    if ($type == STX_ELEMENT_NODE) {
 		$out = $self->_send_element_start($out) if exists $out->{Name};
 
-		$out->{Name} = $c_node->{Name};
-		$out->{LocalName} = $c_node->{LocalName};
-		$out->{Prefix} = $c_node->{Prefix} 
-		  if exists $c_node->{Prefix};
-		$out->{NamespaceURI} = $c_node->{NamespaceURI}
-		  if exists $c_node->{NamespaceURI};
+  		$out->{Name} = $c_node->{Name};
+  		$out->{LocalName} = $c_node->{LocalName};
+  		$out->{Prefix} = $c_node->{Prefix} 
+  		  if exists $c_node->{Prefix};
+  		$out->{NamespaceURI} = $c_node->{NamespaceURI}
+  		  if exists $c_node->{NamespaceURI};
 
 		$out->{Attributes} = {};
 		my @att = split(' ', $i->[1]);
@@ -1117,19 +1155,7 @@ sub _run_template {
 		    if ($i->[1] eq '#all' 
 			or grep($_ eq $c_node->{Attributes}->{$a}->{Name}, @att)) {
 
-			$out->{Attributes}->{$a}->{Name} 
-			  = $c_node->{Attributes}->{$a}->{Name};
-			$out->{Attributes}->{$a}->{LocalName}
-			  = $c_node->{Attributes}->{$a}->{LocalName};
-			$out->{Attributes}->{$a}->{Prefix} 
-			  = $c_node->{Attributes}->{$a}->{Prefix}
-			    if exists $c_node->{Attributes}->{$a}->{Prefix};  
-			$out->{Attributes}->{$a}->{NamespaceURI} 
-			  = $c_node->{Attributes}->{$a}->{NamespaceURI}
-			    if exists $c_node->{Attributes}->{$a}->{NamespaceURI};  
-			$out->{Attributes}->{$a}->{Value} 
-			  = $c_node->{Attributes}->{$a}->{Value}
-			    if exists $c_node->{Attributes}->{$a}->{Value};  
+			$out->{Attributes}->{$a} = $c_node->{Attributes}->{$a};
 		    }
 		}
 
@@ -1169,14 +1195,7 @@ sub _run_template {
 	    if ($type == STX_ELEMENT_NODE) {
 		$out = $self->_send_element_start($out) if exists $out->{Name};
 
-		$out->{Name} = $c_node->{Name};
-		$out->{LocalName} = $c_node->{LocalName};
-		$out->{Prefix} = $c_node->{Prefix}
-		  if exists $c_node->{Prefix};
-		$out->{NamespaceURI} = $c_node->{NamespaceURI}
-		  if exists $c_node->{NamespaceURI};
-
-		$out = $self->_send_element_end($out);
+		$out = $self->_send_element_end($c_node);
 	    }
 	    # else: ignore </copy> for other types of nodes
 
@@ -1591,6 +1610,7 @@ sub _run_template {
 	}
 
     }
+
     # send element after the last instruction
     $out = $self->_send_element_start($out) if exists $out->{Name};
 
@@ -1618,7 +1638,7 @@ sub _expand {
 # evaluates expression to sequence
 sub _eval {
     my ($self, $val, $ns) = @_;
-    
+
     return $self->{SP}->expr([ $self->{Stack}->[-1] ], $val, $ns, {});
 }
 

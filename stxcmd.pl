@@ -9,8 +9,8 @@ use XML::STX;
 my $stx = XML::STX->new();
 
 # set custom parser and writer here
-#$stx->{Parser} = 'XML::SAX::Expat';
-$stx->{Writer} = 'XML::STX::Writer';
+#$stx->{Parser} = 'XML::SAX::ExpatXS';
+#$stx->{Writer} = 'XML::STX::Writer';
 
 my ($v, $m, $sheet, $data, $params) = _check_arguments(@ARGV);
 

@@ -90,6 +90,9 @@ test/process-document1.stx
 test/process-document2.stx
 test/process-document3.stx
 test/process-self.stx
+test/process-siblings1.stx
+test/process-siblings2.stx
+test/process-siblings3.stx
 test/processing-instruction.stx
 test/recursive.stx
 test/result-document.stx
@@ -142,3 +145,4 @@ test/value-of-path.stx
 test/variable-group-01.stx
 test/variable-group-02.stx
 test/variable-local.stx
+META.yml                                 Module meta-data (added by MakeMaker)

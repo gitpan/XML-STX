@@ -9,7 +9,7 @@ use XML::STX::Runtime;
 use XML::STX::Parser;
 
 @XML::STX::ISA = qw(XML::STX::TrAX);
-$VERSION = '0.42';
+$VERSION = '0.43';
 
 # --------------------------------------------------
 
@@ -76,7 +76,7 @@ http://stx.sourceforge.net/ for more details.
 
 Dependencies: XML::SAX, XML::NamespaceSupport and Clone.
 
-The current version is an alpha.
+The current version is unstable.
 
 =head1 USAGE
 

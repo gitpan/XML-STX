@@ -36,6 +36,9 @@ groups|01|0|root.1 node.1 node.2 node.3
 groups-named|01|0|root.1 node.1 koko node.2 mato <<cdata-text>> node.3
 groups-named-att|01|0|/1 @id {koko} $id/2 @id {mato} $id/3 @a0 @a1 @a3 $a0 $a1 $a3
 namespaces01|04|0|<root xmlns="http://koko" ><test:node id="1" xmlns:test="http://test_ns" >1</test:node></root>
+process-siblings1|01|0|<a ><n ><s >2</s><s >3</s></n></a>
+process-siblings2|01|0|<a ><n ><s >2</s></n><s >3</s></a>
+process-siblings3|01|0|<a ><n ><s >2</s></n><s >3</s></a>
 
 # flow control --------------------
 

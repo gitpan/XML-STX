@@ -25,11 +25,18 @@ sub expr {
     my @expr = @$expr;
     $self->{tokens} = \@expr;
 
+    # for debug & testing
+    use Time::HiRes;
+    my $t0 = Time::HiRes::time();
+
     my $result = $self->orExpr($nodes);
     
+    # for debug & testing
+    $self->{STX}->{_time_expr} += Time::HiRes::time() - $t0;
+    
     if ($self->{tokens}->[0]) {
-        # didn't manage to parse entire expression - throw an exception
-	$self->doError(2, 3, $expr, $self->{tokens}->[0]);
+	# didn't manage to parse entire expression - throw an exception
+ 	$self->doError(2, 3, $expr, $self->{tokens}->[0]);
     }
     #print "EXP: ", _dbg_print('[expr]', $result);
     return $result;
@@ -41,6 +48,9 @@ sub match {
     $self->{ns} = $ns;
     $self->{vars} = $vars;
     my $result = [0, -1, '']; # true/false, priority
+
+    # for debug & testing
+    my $t0 = Time::HiRes::time();
 
     # an optimization for single location paths
     if ($#$pattern == 0) {
@@ -60,6 +70,9 @@ sub match {
 	}
     }
 
+    # for debug & testing
+    $self->{STX}->{_time_match} += Time::HiRes::time() - $t0;
+
     #print "EXP: [match] $result->[0]\n";
     return $result;
 }
@@ -77,9 +90,8 @@ sub orExpr {
     while ($self->{tokens}->[0] and
 	   $self->{tokens}->[0] eq 'or') {
 	shift @{$self->{tokens}};
-	my $result2 = $self->andExpr($nodes);
 	my $bool = $self->F_boolean($result);
-	my $bool2 = $self->F_boolean($result2);
+	my $bool2 = $self->F_boolean($self->andExpr($nodes));
 
 	my $val = $bool->[0] + $bool2->[0] > 0 ? 1 : 0;
 	#print "EXP: orExpr: $bool->[0] or $bool2->[0] = $val\n";
@@ -98,9 +110,8 @@ sub andExpr {
     while ($self->{tokens}->[0] and
 	   $self->{tokens}->[0] eq 'and') {
 	shift @{$self->{tokens}};
-	my $result2 = $self->genComp($nodes);
 	my $bool = $self->F_boolean($result);
-	my $bool2 = $self->F_boolean($result2);
+	my $bool2 = $self->F_boolean($self->genComp($nodes));
 
 	my $val = $bool->[0] * $bool2->[0];
 	#print "EXP: andExpr: $bool->[0] and $bool2->[0] = $val\n";
@@ -121,9 +132,7 @@ sub genComp {
 	my $compOp = shift @{$self->{tokens}};
 	#print "EXP: genComp: $compOp\n";
 
-	my $result2 = $self->addExpr($nodes);
-
-	my $comp_res = $self->_compare($result, $result2, $compOp);
+	my $comp_res = $self->_compare($result, $self->addExpr($nodes), $compOp);
  	$result = [[$comp_res, STX_BOOLEAN]];
     }
     #print "EXP: ", _dbg_print('genComp', $result);
@@ -141,9 +150,8 @@ sub addExpr {
 	my $addOp = shift @{$self->{tokens}};
 	#print "EXP: addExpr: $addOp\n";
 
-	my $result2 = $self->multExpr($nodes);
 	my $num = $self->F_number($result);
-	my $num2 = $self->F_number($result2);
+	my $num2 = $self->F_number($self->multExpr($nodes));
 
 	if ($addOp eq '+') {
 	    $result = [[$num->[0] + $num2->[0], STX_NUMBER]];
@@ -169,9 +177,8 @@ sub multExpr {
 	my $multOp = shift @{$self->{tokens}};
 	#print "EXP: multExpr: $multOp\n";
 
-	my $result2 = $self->unaryExpr($nodes);
 	my $num = $self->F_number($result);
-	my $num2 = $self->F_number($result2);
+	my $num2 = $self->F_number($self->unaryExpr($nodes));
 
 	if ($multOp eq '*') {
 	    $result = [[$num->[0] * $num2->[0], STX_NUMBER]];
@@ -216,28 +223,24 @@ sub unaryExpr {
 sub basicExpr {
     my ($self, $nodes) = @_;
     #print "EXP: basicExpr ", $self->{tokens}->[0], "\n";
-    my $result = [];
 
     # literal or numeric literal
     if ($self->{tokens}->[0] 
 	=~ /^(?:$LITERAL|$NUMBER_RE|$DOUBLE_RE)$/o) {
-	$result = $self->literal($nodes);
+	return $self->literal($nodes);
 
     # current item
     } elsif ($self->{tokens}->[0] eq '.') {
-    	$result = $self->currentItem($nodes);
+    	return $self->currentItem($nodes);
 
     # parenthesized expression
     } elsif ($self->{tokens}->[0] eq '(') {
-	$result = $self->parExpr($nodes);
+	return $self->parExpr($nodes);
 
     # data accessor
     } else {
-	$result = $self->dataAccessor($nodes);
+	return $self->dataAccessor($nodes);
     }
-
-    #print "EXP: ", _dbg_print('basicExpr', $result);
-    return $result;
 }
 
 sub currentItem {

@@ -50,6 +50,8 @@ require Exporter;
 	      I_ELEMENT_END
 	      I_P_CHILDREN_START
 	      I_P_CHILDREN_END
+	      I_P_SIBLINGS_START
+	      I_P_SIBLINGS_END
 	      I_P_SELF_START
 	      I_P_SELF_END
 	      I_P_BUFFER_START
@@ -171,6 +173,8 @@ sub I_P_BUFFER_START(){24;}
 sub I_P_BUFFER_END(){25;}
 sub I_P_DOC_START(){26;}
 sub I_P_DOC_END(){27;}
+sub I_P_SIBLINGS_START(){28;}
+sub I_P_SIBLINGS_END(){29;}
 
 sub I_IF_START(){101;}
 sub I_IF_END(){102;}

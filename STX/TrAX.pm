@@ -244,8 +244,8 @@ sub _get_parser() {
     my $self = shift;
     my $options = ($#_ == 0) ? shift : { @_ };
 
-    my @preferred = ('XML::SAX::Expat',
-		     'XML::LibXML::SAX::Parser');
+    my @preferred = ('XML::SAX::ExpatXS',
+		     'XML::LibXML::SAX');
 
     unshift @preferred, $self->{Parser} if $self->{Parser};
 

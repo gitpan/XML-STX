@@ -1,5 +1,10 @@
 Revision history for Perl extension XML::STX.
 
+0.43 December 22, 2004
+	- stx:process-siblings (@while, @until)
+	- minor optimizations 
+	- XML::SAX::ExpatXS used as preferred parser
+
 0.42 October 10, 2003
 	- stx:for-each-item (@name, @select)
 	- stx:while (@test)

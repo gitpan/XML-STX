@@ -10,7 +10,8 @@
 
   <stx:template match="link">
     <l>
-      <stx:process-document href="@*"/>
+      <stx:process-document href="@src1"/>
+      <stx:process-document href="@src2"/>
     </l>
   </stx:template>
 

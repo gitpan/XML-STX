@@ -586,9 +586,41 @@ sub start_element {
 		    $group = $self->_expand_qname($group);
 		}
 
+		#TBD: filter attributes
+
 		push @{$self->{c_template}->[-1]->{instructions}}, 
 		  [I_P_CHILDREN_START, $group];
 		#print "COMP: >PROCESS_CHILDREN_START\n";
+	    }
+
+	# <stx:process-siblings> ----------------------------------------
+	} elsif ($el->{LocalName} eq'process-siblings') {
+
+	    if ($self->_allowed($el->{LocalName})) {
+
+		my $group;
+		if (exists $a->{'{}group'}) {
+		    $self->doError(214,3,'group','<stx:process-siblings>',
+				   'qname') 
+		      unless $a->{'{}group'}->{Value} =~ /^$ATT_QNAME$/;
+		    $group = $a->{'{}group'}->{Value};
+
+		    $group = $self->_expand_qname($group);
+		}
+
+		# --- while ---
+		$self->{_sib}->[0] = exists $a->{'{}while'}
+		  ? $self->tokenize_match($a->{'{}while'}->{Value}) : undef;
+
+		# --- until ---
+		$self->{_sib}->[1] = exists $a->{'{}until'}
+		  ? $self->tokenize_match($a->{'{}until'}->{Value}) : undef;
+
+		#TBD: filter attributes
+
+		push @{$self->{c_template}->[-1]->{instructions}}, 
+		  [I_P_SIBLINGS_START, $group];
+		#print "COMP: >PROCESS_SIBLINGS_START\n";
 	    }
 
 	# <stx:process-attributes> ----------------------------------------
@@ -753,7 +785,7 @@ sub start_element {
 
 	    if ($self->_allowed($el->{LocalName})) {
 		
-		my $attributes = '#all';
+		my $attributes = '#all'; # TBD: changed in the spec!!!
 		if (exists $a->{'{}attributes'}) {
 		    $self->doError(217, 3, 'attributes',
 				   $a->{'{}attributes'}->{Value}, 
@@ -1381,6 +1413,13 @@ sub end_element {
 	    push @{$self->{c_template}->[-1]->{instructions}}, [I_P_CHILDREN_END];
 	    #print "COMP: >PROCESS CHILDREN END /$el->{Name}\n";
 
+	# <stx:process-siblings> ----------------------------------------
+	} elsif ($el->{LocalName} eq 'process-siblings') {
+
+	    push @{$self->{c_template}->[-1]->{instructions}}, 
+	      [I_P_SIBLINGS_END, $self->{_sib}->[0], $self->{_sib}->[1]];
+	    #print "COMP: >PROCESS SIBLINGS END /$el->{Name}\n";
+
 	# <stx:process-self> ----------------------------------------
 	} elsif ($el->{LocalName} eq 'process-self') {
 
@@ -1843,7 +1882,7 @@ my $s_content_constr = [@$s_text_constr ,'call-procedure', 'copy',
 			'result-document', 'process-document', 'for-each-item',
 			'while', '_literal', 'attribute'];
 
-my $s_template = [@$s_content_constr, 'process-children'];
+my $s_template = [@$s_content_constr, 'process-children', 'process-siblings'];
 
 my $sch = {
 	   transform => $s_top_level,
