@@ -10,7 +10,7 @@ my $stx = XML::STX->new();
 
 # set custom parser and writer here
 #$stx->{Parser} = 'XML::SAX::Expat';
-#$stx->{Writer} = 'XML::SAX::Writer';
+$stx->{Writer} = 'XML::STX::Writer';
 
 my ($v, $m, $sheet, $data, $params) = _check_arguments(@ARGV);
 

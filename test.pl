@@ -15,12 +15,19 @@ print "loaded\n";
 my $total = 0;
 my $passed = 0;
 my @failed = ();
+my @errors = (0,0,0);
+my @err0 = ();
 
 open(INDEX,'test/_index');
 
 while (<INDEX>) {
 
     next if $_ =~ /^#/ or $_ =~ /^\s*$/;
+
+    if ($_ =~ /^\$ERRORS(.*)$/) {
+	@err0 = split(' ', $1);
+	next;
+    };
 
     chomp;
     $total++;
@@ -45,6 +52,8 @@ while (<INDEX>) {
     my $handler = TestHandler->new();
     my $result = $stx->new_result($handler);
 
+    $transformer->{ErrorListener} = $handler;
+
     $transformer->transform($source, $result);
 
     $handler->{result} =~ s/\s//g;
@@ -63,9 +72,27 @@ while (<INDEX>) {
 	print "$ln[0]", '.' x $dots, "FAILED!\n";
 	push @failed, $ln[0];
     }
+
+    $errors[0] += $handler->{warnings};
+    $errors[1] += $handler->{errors};
+    $errors[2] += $handler->{fatals};
 }
 
 close INDEX;
+
+# errors
+$total++;
+my $error_line = 'errors (' . join('-', @errors) . ')';
+my $dots = 40 - length($error_line);
+
+if (join('-',@err0) eq join('-', @errors)) {
+    print $error_line, '.' x $dots, "OK\n";
+    $passed++;
+    
+} else {
+    print $error_line, '.' x $dots, "FAILED\n";
+    push @failed, 'errors';
+}
 print '-' x 42, "\n";
 
 if ($passed == $total) {

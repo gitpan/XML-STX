@@ -1,7 +1,6 @@
 <stx:transform version="1.0" 
-	       xmlns:stx="http://stx.sourceforge.net/2002/ns">
-
-  <stx:options strip-space="yes"/>
+  xmlns:stx="http://stx.sourceforge.net/2002/ns"
+  strip-space="yes">
 
   <stx:template match="/*">
     <root>
@@ -12,6 +11,10 @@
       <stx:value-of select="starts-with('moto',concat('mo','to'))"/>
       <stx:text>:</stx:text>
       <stx:value-of select="starts-with('moto','')"/>
+      <stx:text>:</stx:text>
+      <stx:value-of select="starts-with('','to')"/>
+      <stx:text>:</stx:text>
+      <stx:value-of select="starts-with('','')"/>
     </root>
   </stx:template>
   

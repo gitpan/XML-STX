@@ -9,19 +9,15 @@ use strict;
 sub new {
     my $class = shift;
 
-    my $properties = {
-		      'pass-through' => 0,
-		      'recognize-cdata' => 1,
-		      'default-stxpath-namespace' => '',
-		      'output-encoding' => undef,
-		     };
+    my $options = {'stxpath-default-namespace' => [''],
+		   'output-encoding' => undef,
+		  };
 
     my $group = XML::STX::Group->new(0, undef);
 
     my $self = bless {
-		      Options => $properties,
+		      Options => $options,
 		      dGroup => $group,
-		      global => [], # global templates
 		      next_gid => 1,
 		      next_tid => 1,
 		      named_templates => {},
@@ -36,15 +32,31 @@ package XML::STX::Group;
 sub new {
     my ($class, $gid, $group) = @_;
 
+    my $options = {'pass-through' => 0,
+		   'recognize-cdata' => 1,
+		   'strip-space' => 0,
+		  };
+
     my $self = bless {
+		      Options => $options,
 		      gid => $gid,
 		      group => $group, # parent group
-		      templates => {},
-		      public => [], # public & global templates
-		      visible => [], # visible templates
-		      groups => {},
-		      vars => [{}], # variables declared in this group
-		      bufs => [{}], # buffers declared in this group
+		      templates => {}, # contained templates
+		      vGroup => [],  # group templates for non attributes
+		      vGroupA => [], # group templates for attributes
+		      vGroupP => [], # group templates for procedures
+		      pc1  => [],    # precedence category 1 for non attributes
+		      pc1A => [],    # precedence category 1 for attributes
+		      pc1P => {},    # precedence category 1 for procedures
+		      pc2  => [],    # precedence category 2 for non attributes
+		      pc2A => [],    # precedence category 2 for attributes
+		      pc2P => {},    # precedence category 2 for procedures
+		      pc3  => [],    # precedence category 3 for non attributes
+		      pc3A => [],    # precedence category 3 for attributes
+		      pc3P => {},    # precedence category 3 for procedures
+		      groups => {},  # child groups
+		      vars => [{}],  # variables declared in this group
+		      bufs => [{}],  # buffers declared in this group
 		     }, $class;
     return $self;
 }

@@ -1,8 +1,7 @@
 <stx:transform version="1.0" 
-	       xmlns:gr="http://my_groups"
-	       xmlns:stx="http://stx.sourceforge.net/2002/ns">
-
-  <stx:options strip-space="yes" pass-through="none"/>
+  xmlns:gr="http://my_groups"
+  xmlns:stx="http://stx.sourceforge.net/2002/ns"
+  strip-space="yes" pass-through="none">
 
   <stx:template match="root/node">
     <n>

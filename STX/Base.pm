@@ -27,6 +27,7 @@ require Exporter;
               STX_STRING
 
 	      STX_NS_URI
+	      STX_FNS_URI
 	      STX_VERSION
 	      XMLNS_URI
 
@@ -116,6 +117,7 @@ sub STX_STRING() {4;}
 
 # STX constants
 sub STX_NS_URI() {'http://stx.sourceforge.net/2002/ns'};
+sub STX_FNS_URI() {'http://stx.sourceforge.net/2003/functions'};
 sub STX_VERSION() {'1.0'};
 sub XMLNS_URI() {'http://www.w3.org/2000/xmlns/'};
 
@@ -188,7 +190,6 @@ $NODE_TYPE = '((text|comment|processing-instruction|node|cdata)\\(\\))';
 $NUMBER_RE = '\d+(\\.\d*)?|\\.\d+';
 $DOUBLE_RE = '\d+(\\.\d*)?[eE][+-]?\d+';
 $LITERAL = '\\"[^\\"]*\\"|\\\'[^\\\']*\\\'';
-$FUNCTION = '(boolean|string|number|true|false|not|name|namespace-uri|local-name|prefix|normalize-space|position|get-node|level|starts-with|contains|substring|substring-before|substring-after|string-length|concat|translate|has-child-nodes|count|empty|item-at|sublist)';
 
 # --------------------------------------------------
 # error processing
@@ -223,10 +224,17 @@ sub doError {
 	$txt .= "DEBUG INFO: subroutine: $sub, line: $line\n"
     }
 
-    if ($sev > 2) {
-	croak $txt;
+    my $eL = exists $self->{STX} ? $self->{STX}->{ErrorListener}
+      : $self->{ErrorListener};
+
+    if ($sev == 1) {
+	$eL->warning({Message => $txt, Exception => $no});
+
+    } elsif ($sev == 2) {
+	$eL->error({Message => $txt, Exception => $no});
+
     } else {
-	print STDERR $txt;
+	$eL->fatal_error({Message => $txt, Exception => $no});
     }
 }
 
@@ -261,6 +269,7 @@ sub _err_msg {
 	15 => "Incorrect number (_P) of arguments; _P() has _P arguments",
 	16 => "Variable _P not visible",
 	17 => "Namespace nodes can only be associated with elements, _P found",
+	18 => "Collation _P is ignored in _P() function",
 
 	# STXPath functions
         101 => "Unknown data type: _P",
@@ -268,14 +277,15 @@ sub _err_msg {
         103 => "Unknown node type: _P",
         104 => "Empty sequence can't be converted to _P",
         105 => "_P() function requires a _P argument (_P passed)",
-        106 => "count(): item _P requested for sequence with _P members",
-        107 => "count(): item _P requested. Indexes start from 1",
+        106 => "Invalid position: item _P requested from sequence of _P items",
+        107 => "Invalid position: item _P requested. Indexes start from 1",
+        108 => "Invalid argument to _P() function: _P",
 
 	# Stylesheet parser
         201 => "Chunk after the end of document element",
         202 => "_P not allowed as document element (use <stx:transform>)",
-        203 => "<_P> must be present only once",
-        204 => "visibility=\"_P\" (must be 'public', 'private' or 'global')",
+        203 => "Only one instance of <_P> is allowed in stylesheet",
+        204 => "visibility=\"_P\" (must be 'local', 'group' or 'global')",
         205 => "_P=\"_P\" (must be either 'yes' or 'no')",
         206 => "pass-through=\"_P\" (must be 'none','all' or 'text')",
         207 => "stx:attribute must be preceded by element start (i_P found)",
@@ -291,6 +301,7 @@ sub _err_msg {
         217 => "Value of _P attribute (_P) must be _P",
         218 => "_P must follow immediately behind _P (found behind i_P)",
         219 => "Duplicate name of _P: _P",
+        220 => "Duplicate name of procedure _P in precedence category _P",
 
 	# Runtime
         501 => "Prefix in <stx:element name=\"_P\"> not declared",
@@ -298,7 +309,7 @@ sub _err_msg {
         503 => "Output not well-formed: </_P> expected instead of </_P>",
         504 => "Output not well-formed: </_P> found after end of document",
         505 => "Assignment failed: _P _P not declared in this scope",
-        506 => "Position not defined for attributes",
+        506 => "Position not defined for attributes, 1 returned",
         507 => "Group named '_P' not defined",
         508 => "Called procedure _P not visible",
         509 => "_P is not valid _P for TrAX API",
@@ -362,75 +373,6 @@ sub _counter_key($) {
     return $tok;
 }
 
-sub _get_parser() {
-    my $self = shift;
-
-    my @preferred = ('XML::SAX::Expat',
-		     'XML::LibXML::SAX::Parser');
-
-    unshift @preferred, $self->{Parser} if $self->{Parser};
-
-    foreach (@preferred) {
-	$@ = undef;
-	eval "require $_;";
-	unless ($@) {
-	    return eval "$_->new()";
-	}    }
-    # fallback
-    return XML::SAX::PurePerl->new();
-}
-
-sub _get_writer() {
-    my $self = shift;
-
-    my @preferred = ('XML::SAX::Writer');
-
-    unshift @preferred, $self->{Writer} if $self->{Writer};
-
-    foreach (@preferred) {
-	$@ = undef;
-	eval "require $_;";
-	unless ($@) {
-	    return eval "$_->new()";
-	}    }
-    # fallback
-    return XML::STX::Writer->new();
-}
-
-sub _check_source {
-    my ($self, $source) = @_;
-
-    if (ref $source eq 'XML::STX::TrAX::SAXSource') {
-	return $source;
-
-    } elsif (ref $source eq 'HASH' and defined $source->{SystemId}) {
-	my $reader = $self->_get_parser();
-	return XML::STX::TrAX::SAXSource->new($reader, $source);
-
-    } elsif (ref $source eq '') {
-	my $reader = $self->_get_parser();
-	return XML::STX::TrAX::SAXSource->new($reader, {SystemId => $source});
-
-     } else {
-	     $self->doError(509, 3, ref $source, 'source');
-     }
-}
-
-sub _check_result {
-    my ($self, $result) = @_;
-
-    if (ref $result eq 'XML::STX::TrAX::SAXResult') {
-	return $result;
-
-    } elsif (not defined $result) {
-	my $writer = $self->_get_writer();
-	return XML::STX::TrAX::SAXResult->new($writer);
-
-     } else {
-	 $self->doError(509, 3, ref $result, 'result');
-     }
-}
-
 sub _to_sequence {
     my ($self, $value) = @_;
 
@@ -440,7 +382,6 @@ sub _to_sequence {
     } else {
 	return [[$value, STX_STRING]];
     }
-
 }
 
 1;

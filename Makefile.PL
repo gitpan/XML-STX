@@ -35,8 +35,9 @@ WriteMakefile(
     'NAME'		=> 'XML::STX',
     'VERSION_FROM'	=> 'STX.pm',
     'PREREQ_PM'		=> {XML::SAX => 0.10, 
-			    XML::NamespaceSupport => 1.04,
-			    Clone => 0.13},
+			    XML::NamespaceSupport => 1.07,
+			    Clone => 0.13,
+			    POSIX => 1.00},
     'EXE_FILES'	        => [ qw(stxcmd.pl) ],
     dist	        => {COMPRESS => 'gzip', SUFFIX => 'tar.gz'},
 );

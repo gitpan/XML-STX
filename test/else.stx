@@ -1,7 +1,5 @@
 <stx:transform version="1.0" 
-	       xmlns:stx="http://stx.sourceforge.net/2002/ns">
-
-  <stx:options/>
+  xmlns:stx="http://stx.sourceforge.net/2002/ns">
 
   <stx:template match="/root">
     <root>

@@ -1,8 +1,7 @@
 <stx:transform version="1.0" 
-	       xmlns:stx="http://stx.sourceforge.net/2002/ns">
-
-  <stx:options strip-space="yes" 
-	       default-stxpath-namespace="http://test_ns"/>
+  xmlns:stx="http://stx.sourceforge.net/2002/ns"
+  stxpath-default-namespace="http://test_ns"
+  strip-space="yes">
 
   <stx:template match="node">
     <node>
@@ -10,7 +9,7 @@
       <stx:text>-</stx:text>
       <stx:value-of select="concat('name: ', name(), ' ns: ', namespace-uri())"/>
       <stx:text>-</stx:text>
-      <stx:value-of select="concat('2*5', concat('=', 2*5))"/>
+      <stx:value-of select="concat('2*5', concat('=', 2*5), ())"/>
     </node>
   </stx:template>
 

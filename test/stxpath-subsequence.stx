@@ -1,13 +1,12 @@
 <stx:transform version="1.0" 
-	       xmlns:stx="http://stx.sourceforge.net/2002/ns">
-
-  <stx:options strip-space="yes"/>
+  xmlns:stx="http://stx.sourceforge.net/2002/ns"
+  strip-space="yes">
 
   <stx:template match="/root">
     <node>
       <stx:variable name="seq1" select="('a', 'b', 'c', 'd', 'e')"/>
 
-      <stx:variable name="seq2" select="sublist($seq1, 3)"/>
+      <stx:variable name="seq2" select="subsequence($seq1, 3)"/>
       <stx:value-of select="count($seq1)"/>
       <stx:text>;</stx:text>
       <stx:value-of select="count($seq2)"/>
@@ -18,7 +17,7 @@
 
       <stx:text> </stx:text>
 
-      <stx:variable name="seq3" select="sublist($seq1, 2, 2)"/>
+      <stx:variable name="seq3" select="subsequence($seq1, 2, 2)"/>
       <stx:value-of select="count($seq1)"/>
       <stx:text>;</stx:text>
       <stx:value-of select="count($seq3)"/>

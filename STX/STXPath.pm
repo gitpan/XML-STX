@@ -117,7 +117,7 @@ sub genComp {
     my $result = $self->addExpr($nodes);
 
     while ($self->{tokens}->[0] and
-	   $self->{tokens}->[0] =~ /^(=|!=|<|<=|>|>=)$/) {
+	   $self->{tokens}->[0] =~ /^(?:=|!=|<|<=|>|>=)$/) {
 	my $compOp = shift @{$self->{tokens}};
 	#print "EXP: genComp: $compOp\n";
 
@@ -137,7 +137,7 @@ sub addExpr {
     my $result = $self->multExpr($nodes);
 
     while ($self->{tokens}->[0] and
-	   $self->{tokens}->[0] =~ /^(\+|-)$/) {
+	   $self->{tokens}->[0] =~ /^(?:\+|-)$/) {
 	my $addOp = shift @{$self->{tokens}};
 	#print "EXP: addExpr: $addOp\n";
 
@@ -164,7 +164,7 @@ sub multExpr {
     my $result = $self->unaryExpr($nodes);
 
     while ($self->{tokens}->[0] and 
-	   $self->{tokens}->[0] =~ /^(\*|div|mod)$/) {
+	   $self->{tokens}->[0] =~ /^(?:\*|div|mod)$/) {
 
 	my $multOp = shift @{$self->{tokens}};
 	#print "EXP: multExpr: $multOp\n";
@@ -192,7 +192,8 @@ sub unaryExpr {
     my ($self, $nodes) = @_;
     #print "EXP: unaryExpr ", $self->{tokens}->[0], "\n";
 
-    my $unaryOp = ($self->{tokens}->[0] =~ /^(\+|-)$/) 
+    #my $unaryOp = ($self->{tokens}->[0] =~ /^(?:\+|-)$/)
+    my $unaryOp = ($self->{tokens}->[0] eq '+' or $self->{tokens}->[0] eq '-')
       ? shift @{$self->{tokens}} : undef;
 
     my $result = $self->basicExpr($nodes);
@@ -204,8 +205,8 @@ sub unaryExpr {
 	$self->doError(11, 3, $result->[0]->[0]) if $num->[0] eq 'NaN';
 
 	$num->[0] = -$num->[0] if $unaryOp eq '-';
-	#print "EXP: unaryExpr converted to number -> $num\n";
-	return [[$num, STX_NUMBER]];
+	#print "EXP: unaryExpr converted to number -> $num->[0]\n";
+	return [[$num->[0], STX_NUMBER]];
 
     } else {
 	return $result;
@@ -219,7 +220,7 @@ sub basicExpr {
 
     # literal or numeric literal
     if ($self->{tokens}->[0] 
-	=~ /^($LITERAL|$NUMBER_RE|$DOUBLE_RE)$/) {
+	=~ /^(?:$LITERAL|$NUMBER_RE|$DOUBLE_RE)$/o) {
 	$result = $self->literal($nodes);
 
     # current item
@@ -255,7 +256,7 @@ sub literal {
 
     my $lit = shift @{$self->{tokens}};
 
-    if ($lit =~ /^($NUMBER_RE|$DOUBLE_RE)$/) {
+    if ($lit =~ /^($NUMBER_RE|$DOUBLE_RE)$/o) {
 	return [[$1, STX_NUMBER]]
 
     } elsif ($lit =~ /^['](.*)[']$/ or $lit =~ /^["](.*)["]$/) {
@@ -267,7 +268,8 @@ sub fcCall {
     my ($self, $nodes) = @_;
     #print "EXP: fcCall ", $self->{tokens}->[0], "\n";
 
-    my $fce = shift @{$self->{tokens}};
+    my $fce = substr(shift @{$self->{tokens}}, 
+		     length(STX_FNS_URI) + 2);
 
     # parsing & expanding arguments
     $self->doError(13, 3, $fce, $self->{tokens}->[0]) 
@@ -327,7 +329,7 @@ sub fcCall {
 	$self->doError(216, 3, "\'$fce()\'") unless $nodes;
 	# current node is used when no argument found
 	my $arg = $arg[0] ? $arg[0] 
-	  : [[$self->{STX}->{Stack}->[$#{$self->{STX}->{Stack}}],STX_NODE]];
+	  : [[$self->{STX}->{Stack}->[-1],STX_NODE]];
 	$self->doError(15, 3, scalar @arg, $fce, 1) if @arg > 1;
 	return $self->F_name($arg);
 
@@ -335,7 +337,7 @@ sub fcCall {
 	$self->doError(216, 3, "\'$fce()\'") unless $nodes;
 	# current node is used when no argument found
 	my $arg = $arg[0] ? $arg[0] 
-	  : [[$self->{STX}->{Stack}->[$#{$self->{STX}->{Stack}}],STX_NODE]];
+	  : [[$self->{STX}->{Stack}->[-1],STX_NODE]];
 	$self->doError(15, 3, scalar @arg, $fce, 1) if @arg > 1;
 	return $self->F_namespace_uri($arg);
 
@@ -343,52 +345,53 @@ sub fcCall {
 	$self->doError(216, 3, "\'$fce()\'") unless $nodes;
 	# current node is used when no argument found
 	my $arg = $arg[0] ? $arg[0] 
-	  : [[$self->{STX}->{Stack}->[$#{$self->{STX}->{Stack}}],STX_NODE]];
+	  : [[$self->{STX}->{Stack}->[-1],STX_NODE]];
 	$self->doError(15, 3, scalar @arg, $fce, 1) if @arg > 1;
 	return $self->F_local_name($arg);
 
-    } elsif ($fce eq 'prefix') {
-	$self->doError(216, 3, "\'$fce()\'") unless $nodes;
-	# current node is used when no argument found
-	my $arg = $arg[0] ? $arg[0] 
-	  : [[$self->{STX}->{Stack}->[$#{$self->{STX}->{Stack}}],STX_NODE]];
-	$self->doError(15, 3, scalar @arg, $fce, 1) if @arg > 1;
-	return $self->F_prefix($arg);
-
     } elsif ($fce eq 'normalize-space') {
-	$self->doError(15, 3, scalar @arg, $fce, 1) if @arg != 1;
-	return $self->F_normalize_space($arg[0]);
+	$self->doError(15, 3, scalar @arg, $fce, 1) if @arg > 1;
+	# string value of the current node is used when no argument found
+	my $arg = $arg[0] ? $arg[0] 
+	  : [$self->F_string([[$self->{STX}->{Stack}->[-1],STX_NODE]])];
+	return $self->F_normalize_space($arg);
 
     } elsif ($fce eq 'position') {
 	$self->doError(216, 3, "\'$fce()\'") unless $nodes;
 	$self->doError(15, 3, scalar @arg, $fce, 0) if @arg != 0;
-	$self->doError(506, 3) unless defined $self->{STX}->{position};
+	# returns 1 and warning for attributes
+	if ($self->{STX}->{position} == 0) {
+	    $self->doError(506, 1);
+	    return [[1, STX_NUMBER]];
+	};
 	return [[$self->{STX}->{position}, STX_NUMBER]];
-
-    } elsif ($fce eq 'get-node') {
-	$self->doError(216, 3, "\'$fce()\'") unless $nodes;
-	$self->doError(15, 3, scalar @arg, $fce, 1) if @arg != 1;
-	return $self->F_get_node($arg[0]);
 
     } elsif ($fce eq 'has-child-nodes') {
 	$self->doError(216, 3, "\'$fce()\'") unless $nodes;
 	$self->doError(15, 3, scalar @arg, $fce, 0) if @arg != 0;
 	return [[$self->{STX}->{_child_nodes}, STX_BOOLEAN]];
 
-    } elsif ($fce eq 'level') {
+    } elsif ($fce eq 'node-kind') {
 	$self->doError(216, 3, "\'$fce()\'") unless $nodes;
 	# current node is used when no argument found
 	my $arg = $arg[0] ? $arg[0] 
-	  : [[$self->{STX}->{Stack}->[$#{$self->{STX}->{Stack}}],STX_NODE]];
-	$self->doError(15, 3, scalar @arg, $fce, 1) if @arg > 1;
-	return $self->F_level($arg);
+	  : [[$self->{STX}->{Stack}->[-1],STX_NODE]];
+	$self->doError(15, 3, scalar @arg, $fce, 0) if @arg > 1;
+	return $self->F_node_kind($arg);
 
     } elsif ($fce eq 'starts-with') {
-	$self->doError(15, 3, scalar @arg, $fce, 2) if @arg != 2;
+	$self->doError(18, 1, $arg[2]->[0]->[0], $fce) if @arg == 3;
+	$self->doError(15, 3, scalar @arg, $fce, 2) if @arg != 2 and @arg != 3;
 	return $self->F_starts_with(@arg);
 
+    } elsif ($fce eq 'ends-with') {
+	$self->doError(18, 1, $arg[2]->[0]->[0], $fce) if @arg == 3;
+	$self->doError(15, 3, scalar @arg, $fce, 2) if @arg != 2 and @arg != 3;
+	return $self->F_ends_with(@arg);
+
     } elsif ($fce eq 'contains') {
-	$self->doError(15, 3, scalar @arg, $fce, 2) if @arg != 2;
+	$self->doError(18, 1, $arg[2]->[0]->[0], $fce) if @arg == 3;
+	$self->doError(15, 3, scalar @arg, $fce, 2) if @arg != 2 and @arg != 3;
 	return $self->F_contains(@arg);
 
     } elsif ($fce eq 'substring') {
@@ -396,40 +399,81 @@ sub fcCall {
 	return $self->F_substring(@arg);
 
     } elsif ($fce eq 'substring-before') {
-	$self->doError(15, 3, scalar @arg, $fce, 2) if @arg != 2;
+	$self->doError(18, 1, $arg[2]->[0]->[0], $fce) if @arg == 3;
+	$self->doError(15, 3, scalar @arg, $fce, 2) if @arg != 2 and @arg!=3;
 	return $self->F_substring_before(@arg);
 
     } elsif ($fce eq 'substring-after') {
-	$self->doError(15, 3, scalar @arg, $fce, 2) if @arg != 2;
+	$self->doError(18, 1, $arg[2]->[0]->[0], $fce) if @arg == 3;
+	$self->doError(15, 3, scalar @arg, $fce, 2) if @arg != 2 and @arg!=3;
 	return $self->F_substring_after(@arg);
 
     } elsif ($fce eq 'string-length') {
-	$self->doError(15, 3, scalar @arg, $fce, 1) if @arg != 1;
-	return $self->F_string_length(@arg);
+	$self->doError(15, 3, scalar @arg, $fce, 1) if @arg > 1;
+	# string value of the current node is used when no argument found
+	my $arg = $arg[0] ? $arg[0] 
+	  : [$self->F_string([[$self->{STX}->{Stack}->[-1],STX_NODE]])];
+	return $self->F_string_length($arg);
 
     } elsif ($fce eq 'concat') {
-	$self->doError(15, 3, scalar @arg, $fce, 1) if @arg < 1;
+	# any number of arguments is allowed
 	return $self->F_concat(@arg);
+
+    } elsif ($fce eq 'string-join') {
+	$self->doError(15, 3, scalar @arg, $fce, 2) if @arg != 2;
+	return $self->F_string_join(@arg);
 
     } elsif ($fce eq 'translate') {
 	$self->doError(15, 3, scalar @arg, $fce, 3) if @arg != 3;
 	return $self->F_translate(@arg);
 
+    } elsif ($fce eq 'floor') {
+	$self->doError(15, 3, scalar @arg, $fce, 1) if @arg != 1;
+	return $self->F_floor(@arg);
+
+    } elsif ($fce eq 'round') {
+	$self->doError(15, 3, scalar @arg, $fce, 1) if @arg != 1;
+	return $self->F_floor([[$arg[0]->[0]->[0] + 0.5, STX_NUMBER]]);
+
+    } elsif ($fce eq 'ceiling') {
+	$self->doError(15, 3, scalar @arg, $fce, 1) if @arg != 1;
+	return $self->F_ceiling(@arg);
+
     } elsif ($fce eq 'count') {
 	$self->doError(15, 3, scalar @arg, $fce, 1) if @arg != 1;
-	return $self->F_count($arg[0]);
+	return [[scalar @{$arg[0]}, STX_NUMBER]];
 	
+    } elsif ($fce eq 'sum') {
+	$self->doError(15, 3, scalar @arg, $fce, 1) if @arg != 1;
+	return $self->F_sum($arg[0]);
+
+    } elsif ($fce eq 'avg') {
+	$self->doError(15, 3, scalar @arg, $fce, 1) if @arg != 1;
+	return $self->F_avg($arg[0]);
+
+    } elsif ($fce eq 'min') {
+	$self->doError(15, 3, scalar @arg, $fce, 1) if @arg != 1;
+	return $self->F_min($arg[0]);
+
+    } elsif ($fce eq 'max') {
+	$self->doError(15, 3, scalar @arg, $fce, 1) if @arg != 1;
+	return $self->F_max($arg[0]);
+
     } elsif ($fce eq 'empty') {
 	$self->doError(15, 3, scalar @arg, $fce, 1) if @arg != 1;
 	return $self->F_empty($arg[0]);
+
+    } elsif ($fce eq 'exists') {
+	$self->doError(15, 3, scalar @arg, $fce, 1) if @arg != 1;
+	return $self->F_exists($arg[0]);
 
     } elsif ($fce eq 'item-at') {
 	$self->doError(15, 3, scalar @arg, $fce, 2) if @arg != 2;
 	return $self->F_item_at(@arg);
 
-    } elsif ($fce eq 'sublist') {
-	$self->doError(15, 3, scalar @arg, $fce, 2) if @arg < 2;
-	return $self->F_sublist(@arg);
+    } elsif ($fce eq 'subsequence') {
+	$self->doError(15, 3, scalar @arg, $fce, 2) if @arg != 2 and @arg != 3;
+	return $self->F_subsequence(@arg);
 
     # ----------
     } else {
@@ -467,7 +511,8 @@ sub dataAccessor {
     #print "EXP: dataAccessor ", $self->{tokens}->[0], "\n";
 
     my $result;
-    if ($self->{tokens}->[0] =~ /^@/) {
+
+    if (unpack('A1', $self->{tokens}->[0]) eq '@') {
 	$result = $self->attributeNameTest($nodes);
 
     } else { 
@@ -475,17 +520,20 @@ sub dataAccessor {
 	if ($self->{tokens}->[0] =~ /^\$(.+)$/) {
 	    $result = $self->variable($1);
 
-	} elsif ($self->{tokens}->[0] =~ /^$FUNCTION$/) {
+	# function call
+	} elsif (substr($self->{tokens}->[0],1,length(STX_FNS_URI)) 
+		 eq STX_FNS_URI) {
 	    $result = $self->fcCall($nodes);
 
-	} else { # pathAccessor
+        # pathAccessor
+	} else { 
 	    $result = $self->pathAccessor($nodes);	
 	}
 
 	if ($self->{tokens}->[0] eq '/') {
 	    shift @{$self->{tokens}};
 
-	    if ($self->{tokens}->[0] =~ /^@/) {
+	    if (unpack('A1', $self->{tokens}->[0]) eq '@') {
 		# sequence is turned back to nodes
 		my @nodes2 = map($_->[0], @$result);
 		$result = $self->attributeNameTest(\@nodes2);
@@ -536,10 +584,10 @@ sub relAccessor {
     $nodes = $self->accessorStep($nodes);
 
     while ($self->{tokens}->[0] and
-	   $self->{tokens}->[0] =~ /^(\/|\/\/)$/) {
+	   $self->{tokens}->[0] =~ /^(?:\/|\/\/)$/) {
 
 	# attributes to be resolved elsewhere
-	last if $self->{tokens}->[1] =~ /^@/;
+	last if unpack('A', $self->{tokens}->[1]) eq '@';
 
 	my $delimiter = shift @{$self->{tokens}};
 	#print "EXP: relAccessor next: $delimiter $self->{tokens}->[0]\n";
@@ -586,10 +634,9 @@ sub variable {
     shift @{$self->{tokens}};
 
     # local variable
-    if (my $ct = $self->{STX}->{_c_template}->[$#{$self->{STX}->{_c_template}}]) {
+    if (my $ct = $self->{STX}->{_c_template}->[-1]) {
 	my $vars = $ct->{vars};
-	return $vars->[$#$vars]->{$name}->[0] 
-	  if $vars->[$#$vars]->{$name};
+	return $vars->[-1]->{$name}->[0] if $vars->[-1]->{$name};
     }
 
     # group variable
@@ -842,7 +889,7 @@ sub kindTest {
 
     } elsif ($test eq 'processing-instruction') {
 	unless ($self->{tokens}->[1] eq '('
-		and $self->{tokens}->[2] =~ /^($LITERAL)$/
+		and $self->{tokens}->[2] =~ /^(?:$LITERAL)$/o
 		and $self->{tokens}->[3] eq ')') {
 
 	    my $expr = $self->{tokens}->[0] . $self->{tokens}->[1] 
@@ -902,7 +949,7 @@ sub _node_match {
     if ($node->{Type} == 1 or $node->{Type} == 6) {
 
 	my $nsuri = '';
-	my $lname = (substr($self->{tokens}->[0],0,1) eq '@')
+	my $lname = (unpack('A1', $self->{tokens}->[0]) eq '@')
 	  ? substr($self->{tokens}->[0],1) : $self->{tokens}->[0];
 
 	if ($lname =~ /^\{([^|}]+)\}(.+)/) {
@@ -1129,13 +1176,11 @@ sub _get_group_variable {
     my $g = $self->{STX}->{c_group} ? $self->{STX}->{c_group} 
       : $self->{STX}->{Sheet}->{dGroup};
 
-    return $g->{vars}->[$#{$g->{vars}}]->{$name}->[0]
-      if $g->{vars}->[$#{$g->{vars}}]->{$name};
+    return $g->{vars}->[-1]->{$name}->[0] if $g->{vars}->[-1]->{$name};
 
     while ($g->{group}) {
 	$g = $g->{group};
-	return $g->{vars}->[$#{$g->{vars}}]->{$name}->[0]
-	  if $g->{vars}->[$#{$g->{vars}}]->{$name};
+	return $g->{vars}->[-1]->{$name}->[0] if $g->{vars}->[-1]->{$name};
     }
     return undef;
 }

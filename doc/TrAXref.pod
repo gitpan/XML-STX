@@ -254,7 +254,7 @@ Receives notification of a warning.
 
 Receives notification of a recoverable error.
 
-=item fatalError(L<Exception|exception>)
+=item fatal_error(L<Exception|exception>)
 
 Receives notification of a non-recoverable error.
 
@@ -290,8 +290,10 @@ in system; XML::STX::Writer being the fall-back.
 
 =head3 Exception
 
-An instance of XML::SAX::Exception.
+A (blessed) hash representing a Perl exception.
 
 =for html See <a href="http://cvs.sourceforge.net/cgi-bin/viewcvs.cgi/*checkout*/perl-xml/libxml-perl/doc/sax-2.0.html#Exceptions">Perl SAX 2.0 Binding</a>.
+
+I<$Id: TrAXref.pod,v 1.9 2003/05/29 08:42:04 cvspetr Exp $>
 
 =cut

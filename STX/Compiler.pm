@@ -21,8 +21,9 @@ my $ATT_QNAMES = "$ATT_QNAME( $ATT_QNAME)*";
 
 sub new {
     my $class = shift;
-
-    my $self = bless {}, $class;
+    my $options = ($#_ == 0) ? shift : { @_ };
+    
+    my $self = bless $options, $class;
     return $self;
 }
 
@@ -31,9 +32,9 @@ sub new {
 sub start_document {
     my $self = shift;
 
-    $self->{e_stack} = [];
-    $self->{g_stack} = [];
-    $self->{nsc} = XML::NamespaceSupport->new({ xmlns => 1 });
+    $self->{e_stack} ||= [];
+    $self->{g_stack} ||= [];
+    $self->{nsc} ||= XML::NamespaceSupport->new({ xmlns => 1 });
 }
 
 sub end_document {
@@ -54,9 +55,9 @@ sub start_element {
 
     my $a = exists $el->{Attributes} ? $el->{Attributes} : {};
     my $e_stack_top = $#{$self->{e_stack}} == -1 ? undef 
-      : $self->{e_stack}->[$#{$self->{e_stack}}];
+      : $self->{e_stack}->[-1];
     my $g_stack_top = $#{$self->{g_stack}} == -1 ? undef 
-      : $self->{g_stack}->[$#{$self->{g_stack}}];
+      : $self->{g_stack}->[-1];
 
     # STX instructions ==================================================
     if (defined $el->{NamespaceURI} and $el->{NamespaceURI} eq STX_NS_URI) {
@@ -64,93 +65,131 @@ sub start_element {
 	# <stx:transform> ----------------------------------------
 	if ($el->{LocalName} eq 'transform') {
 
-	    if ($self->_allowed($el->{LocalName})) {
-
-		$self->{Sheet} = XML::STX::Stylesheet->new();
-		push @{$self->{g_stack}}, $self->{Sheet}->{dGroup};
-		#print "COMP: >new stylesheet $self->{Sheet}\n";
-		#print "COMP: >default group $self->{Sheet}->{dGroup}->{gid}\n";
-
-		$self->doError(212, 3, '<stx:transform>', 'version')
-		  unless exists $el->{Attributes}->{'{}version'};
-
-		$self->doError(214, 3, 'version', '<stx:transform>', '1.0')
-		  unless $el->{Attributes}->{'{}version'}->{Value} eq STX_VERSION;
-	    }
-	    #$self->_dump_options;
-
-	# <stx:options> ----------------------------------------
-	} elsif ($el->{LocalName} eq 'options') {
-
-	    $self->doError(203, 3, 'stx:options') if $self->{options};
+	    $el->{LocalName} = 'group' if $self->{include};
 
 	    if ($self->_allowed($el->{LocalName})) {
-		
-		if (exists $a->{'{}default-stxpath-namespace'}) {
-		    if ($a->{'{}default-stxpath-namespace'}->{Value} 
+
+		# included module
+		if ($self->{include}) {
+		    #print "COMP: >include\n";
+		    $el->{LocalName} = 'transform';
+
+		    my $g = XML::STX::Group->new($self->{Sheet}->{next_gid},
+						 $g_stack_top);
+		    #print "COMP: >new group $self->{Sheet}->{next_gid} $g\n";
+
+		    # the group is linked from the previous group
+		    $g_stack_top->{groups}->{$self->{Sheet}->{next_gid}} = $g;
+
+		    push @{$self->{g_stack}}, $g;
+		    $self->{Sheet}->{next_gid}++;
+
+		# principal module
+		} else {
+		    $self->{Sheet} = XML::STX::Stylesheet->new();
+		    push @{$self->{g_stack}}, $self->{Sheet}->{dGroup};
+		    #print "COMP: >new stylesheet $self->{Sheet}\n";
+		    #print "COMP: >default group $self->{Sheet}->{dGroup}->{gid}\n";
+
+		    $self->doError(212, 3, '<stx:transform>', 'version')
+		      unless exists $el->{Attributes}->{'{}version'};
+
+		    $self->doError(214, 3, 'version', '<stx:transform>', '1.0')
+		      unless $el->{Attributes}->{'{}version'}->{Value} eq STX_VERSION;
+		}
+
+		# options: stxpath-default-namespace
+		if (exists $a->{'{}stxpath-default-namespace'}) {
+		    if ($a->{'{}stxpath-default-namespace'}->{Value} 
 			=~ /^$ATT_URIREF$/) {
-			#$self->{Sheet}->{Options}->{'default-stxpath-namespace'}
-			$g_stack_top->{Options}->{'default-stxpath-namespace'}
-			  = $a->{'{}default-stxpath-namespace'}->{Value};
+			push @{$self->{Sheet}->{Options}->
+				 {'stxpath-default-namespace'}}, 
+				   $a->{'{}stxpath-default-namespace'}->{Value};
 		    } else {
-			$self->doError(217, 3, 'default-stxpath-namespace', 
-				       $a->{'{}default-stxpath-namespace'}->{Value},
+			$self->doError(217, 3, 'stxpath-default-namespace', 
+				       $a->{'{}stxpath-default-namespace'}->{Value},
 				       'uri-reference', );	  
 		    }
 		}
 
-		if (exists $a->{'{}recognize-cdata'}) {
-		    if ($a->{'{}recognize-cdata'}->{Value} eq 'no') {
-			$self->{Sheet}->{Options}->{'recognize-cdata'} = 0
-		    } elsif ($a->{'{}recognize-cdata'}->{Value} ne 'yes') {
-			$self->doError(205, 3, 'recognize-data', 
-				       $a->{'{}recognize-cdata'}->{Value});
-		    }
-		}
-
-		if (exists $a->{'{}output-encoding'}) {
-		    if ($a->{'{}output-encoding'}->{Value} 
-			=~ /^$ATT_STRING$/) {
-			$self->{Sheet}->{Options}->{'output-encoding'}
-			  = $a->{'{}output-encoding'}->{Value};
-		    } else {
-			 $self->doError(217, 3, 'output-encoding', 
-					$a->{'{}output-encoding'}->{Value},
-					'string');	  
-		    }
-		}
-
-		if (exists $a->{'{}pass-through'}) {
-		    if ($a->{'{}pass-through'}->{Value} eq 'all') {
-			$self->{Sheet}->{Options}->{'pass-through'} = 1
-
-		    } elsif ($a->{'{}pass-through'}->{Value} eq 'text') {
-			$self->{Sheet}->{Options}->{'pass-through'} = 2
-
-		    } elsif ($a->{'{}pass-through'}->{Value} ne 'none') {
-			$self->doError(206, 3, 
-				       $a->{'{}pass-through'}->{Value});
+		# options: output-encoding
+		unless ($self->{include}) {
+		    if (exists $a->{'{}output-encoding'}) {
+			if ($a->{'{}output-encoding'}->{Value} 
+			    =~ /^$ATT_STRING$/) {
+			    $self->{Sheet}->{Options}->{'output-encoding'}
+			      = $a->{'{}output-encoding'}->{Value};
+			} else {
+			    $self->doError(217, 3, 'output-encoding', 
+					   $a->{'{}output-encoding'}->{Value},
+					   'string');	  
+			}
 		    }
 		}
 		
-		if (exists $a->{'{}strip-space'}) {
-		    if ($a->{'{}strip-space'}->{Value} eq 'yes') {
-			$self->{Sheet}->{Options}->{'strip-space'} = 1
-		    } elsif ($a->{'{}strip-space'}->{Value} ne 'no') {
-			$self->doError(205, 3, 'strip-space',
-				       $a->{'{}strip-space'}->{Value});
-		    }
-		}
+		# options: recognize-cdata
+ 		if (exists $a->{'{}recognize-cdata'}) {
+ 		    if ($a->{'{}recognize-cdata'}->{Value} eq 'no') {
+ 			$self->{g_stack}->[-1]->{Options}->{'recognize-cdata'} = 0
+ 		    } elsif ($a->{'{}recognize-cdata'}->{Value} ne 'yes') {
+ 			$self->doError(205, 3, 'recognize-data', 
+ 				       $a->{'{}recognize-cdata'}->{Value});
+ 		    }
+ 		}
+
+		# options: pass-through
+ 		if (exists $a->{'{}pass-through'}) {
+ 		    if ($a->{'{}pass-through'}->{Value} eq 'all') {
+ 			$self->{g_stack}->[-1]->{Options}->{'pass-through'} = 1
+
+ 		    } elsif ($a->{'{}pass-through'}->{Value} eq 'text') {
+ 			$self->{g_stack}->[-1]->{Options}->{'pass-through'} = 2
+
+ 		    } elsif ($a->{'{}pass-through'}->{Value} ne 'none') {
+ 			$self->doError(206, 3, 
+ 				       $a->{'{}pass-through'}->{Value});
+ 		    }
+ 		}
+
+		# options: strip-space
+ 		if (exists $a->{'{}strip-space'}) {
+ 		    if ($a->{'{}strip-space'}->{Value} eq 'yes') {
+ 			$self->{g_stack}->[-1]->{Options}->{'strip-space'} = 1
+ 		    } elsif ($a->{'{}strip-space'}->{Value} ne 'no') {
+ 			$self->doError(205, 3, 'strip-space',
+ 				       $a->{'{}strip-space'}->{Value});
+ 		    }
+ 		}
 
 	    }
-	    $self->{options} = 1;
-	    #$self->_dump_options;
 
 	# <stx:include> ----------------------------------------
 	} elsif ($el->{LocalName} eq 'include') {
 
 	    if ($self->_allowed($el->{LocalName})) {
-		#tbd
+		
+		$self->doError(212, 3, '<stx:include>', 'href')
+		  unless exists $a->{'{}href'};
+
+		$self->doError(214,3,'href','<stx:include>', 'URI reference') 
+		  unless $a->{'{}href'}->{Value} =~ /^$ATT_URIREF$/;
+
+		my $source = $self->{URIResolver}->resolve($a->{'{}href'}->{Value},
+							   $self->{SheetBase});
+
+		# nested compiler inherits properties from the current one
+ 		my $iComp = XML::STX::Compiler->new({include => 1});
+ 		$iComp->{Sheet} = $self->{Sheet};
+		$iComp->{e_stack} = $self->{e_stack};
+		$iComp->{g_stack} = $self->{g_stack};
+		$iComp->{nsc} = $self->{nsc};
+ 		$iComp->{DBG} = $self->{DBG};
+ 		$iComp->{URIResolver} = $self->{URIResolver};
+ 		$iComp->{ErrorListener} = $self->{ErrorListener};
+ 		$iComp->{SheetBase} = $self->{SheetBase};
+
+ 		$source->{XMLReader}->{Handler} = $iComp;
+ 		$source->{XMLReader}->parse_uri($source->{SystemId});
 	    }
 
 	# <stx:namespace-alias> ----------------------------------------
@@ -168,8 +207,21 @@ sub start_element {
 		my $g = XML::STX::Group->new($self->{Sheet}->{next_gid},
 					     $g_stack_top);
 		#print "COMP: >new group $self->{Sheet}->{next_gid} $g\n";
+
 		# the group is linked from the previous group
 		$g_stack_top->{groups}->{$self->{Sheet}->{next_gid}} = $g;
+
+		# the group inherits pc2 templates from all ancestors
+		foreach (@{$self->{g_stack}}) {
+		    push @{$g->{pc2}}, @{$_->{vGroup}};
+		    push @{$g->{pc2A}}, @{$_->{vGroupA}};
+
+		    foreach my $p (@{$_->{vGroupP}}) {
+			$self->doError(220, 3, $p->{name}, 2)
+			  if $g->{pc2P}->{$p->{name}};
+			$g->{pc2P}->{$p->{name}} = $p;
+		    }
+		}
 
 		if (exists $a->{'{}name'}) {
 		    $self->doError(214,3,'name','<stx:group>', 'qname') 
@@ -184,6 +236,72 @@ sub start_element {
 		    $self->{Sheet}->{named_groups}->{$g->{name}} = $g;
 		}
 
+		# options: recognize-cdata
+ 		if (exists $a->{'{}recognize-cdata'}) {
+ 		    if ($a->{'{}recognize-cdata'}->{Value} eq 'no') {
+ 			$g->{Options}->{'recognize-cdata'} = 0
+
+ 		    } elsif ($a->{'{}recognize-cdata'}->{Value} eq 'yes') {
+ 			$g->{Options}->{'recognize-cdata'} = 1
+
+ 		    } elsif ($a->{'{}recognize-cdata'}->{Value} eq 'inherit') {
+ 			$g->{Options}->{'recognize-cdata'} 
+			  = $g->{group}->{Options}->{'recognize-cdata'}
+
+		    } else {
+ 			$self->doError(205, 3, 'recognize-data', 
+ 				       $a->{'{}recognize-cdata'}->{Value});
+		    }
+ 		} else {
+		    $g->{Options}->{'recognize-cdata'} 
+		      = $g->{group}->{Options}->{'recognize-cdata'}
+		}
+
+ 		# options: pass-through
+  		if (exists $a->{'{}pass-through'}) {
+  		    if ($a->{'{}pass-through'}->{Value} eq 'all') {
+  			$g->{Options}->{'pass-through'} = 1
+
+  		    } elsif ($a->{'{}pass-through'}->{Value} eq 'text') {
+  			$g->{Options}->{'pass-through'} = 2
+
+  		    } elsif ($a->{'{}pass-through'}->{Value} eq 'none') {
+  			$g->{Options}->{'pass-through'} = 0
+
+  		    } elsif ($a->{'{}pass-through'}->{Value} eq 'inherit') {
+  			$g->{Options}->{'pass-through'} 
+			  = $g->{group}->{Options}->{'pass-through'}
+
+  		    } else {
+  			$self->doError(206, 3, 
+  				       $a->{'{}pass-through'}->{Value});
+  		    }
+  		} else {
+		    $g->{Options}->{'pass-through'} 
+		      = $g->{group}->{Options}->{'pass-through'}
+		}
+
+ 		# options: strip-space
+  		if (exists $a->{'{}strip-space'}) {
+  		    if ($a->{'{}strip-space'}->{Value} eq 'yes') {
+  			$g->{Options}->{'strip-space'} = 1
+
+  		    } elsif ($a->{'{}strip-space'}->{Value} eq 'no') {
+  			$g->{Options}->{'strip-space'} = 0
+
+  		    } elsif ($a->{'{}strip-space'}->{Value} eq 'inherit') {
+  			$g->{Options}->{'strip-space'} 
+			  = $g->{group}->{Options}->{'strip-space'}
+
+  		    } else {
+  			$self->doError(205, 3, 'strip-space',
+  				       $a->{'{}strip-space'}->{Value});
+  		    }
+  		} else {
+		    $g->{Options}->{'strip-space'} 
+		      = $g->{group}->{Options}->{'strip-space'}
+		}
+
 		push @{$self->{g_stack}}, $g;
 		$self->{Sheet}->{next_gid}++;
 	    }
@@ -194,8 +312,7 @@ sub start_element {
 	    if ($self->_allowed($el->{LocalName})) {
 
 		my $t = XML::STX::Template->new($self->{Sheet}->{next_tid},
-						$g_stack_top
-					       );
+						$g_stack_top);
 
 		# --- match ---
 		$self->doError(212, 3, '<stx:template>', 'match')
@@ -205,10 +322,10 @@ sub start_element {
 
 		if ($#{$t->{match}->[0]->[0]->{step}} > -1) {
 		    foreach (@{$t->{match}}) {
-			if ($_->[$#$_]->{step}->[0] =~ /^@/) {
+			if ($_->[-1]->{step}->[0] =~ /^@/) {
 			    $t->{_att} = 1;
 			    $t->{_not_att} = 0;
-			} elsif ($_->[$#$_]->{step}->[0] =~ /^node\(\)/) {
+			} elsif ($_->[-1]->{step}->[0] =~ /^node\(\)/) {
 			    $t->{_att} = 1;
 			    $t->{_not_att} = 1;
 			} else {
@@ -244,56 +361,72 @@ sub start_element {
 		    }
 		}
 
+		# --- public ---
+		$t->{public} = 0;
+		# visible from the current group
+		unshift @{$g_stack_top->{pc1}}, $t if $t->{_not_att};
+		unshift @{$g_stack_top->{pc1A}}, $t if $t->{_att};
+
+		if (exists $a->{'{}public'}) {
+
+		    if ($a->{'{}public'}->{Value} eq 'yes') {
+			$t->{public} = 1;
+
+			if ($t->{_not_att}) {
+			    # visible from the parent group
+			    unshift @{$self->{g_stack}->[-2]->{pc1}}, $t 
+			      if $#{$self->{g_stack}} > 0;
+			}
+			if ($t->{_att}) { # to match against attributes
+			    # visible from the parent group
+			    unshift @{$self->{g_stack}->[-2]->{pc1A}}, $t 
+			      if $#{$self->{g_stack}} > 0;
+			}
+			
+		    } elsif ($a->{'{}public'}->{Value} ne 'no') {
+			$self->doError(205, 3, 'public', $a->{'{}public'}->{Value});
+		    }
+		} elsif ($e_stack_top->{LocalName} eq 'transform') {
+		    $t->{public} = 1;
+
+		    if ($t->{_not_att}) {
+			    # visible from the parent group
+			unshift @{$self->{g_stack}->[-2]->{pc1}}, $t 
+			  if $#{$self->{g_stack}} > 0;
+		    }
+		    if ($t->{_att}) { # to match against attributes
+			# visible from the parent group
+			unshift @{$self->{g_stack}->[-2]->{pc1A}}, $t 
+			  if $#{$self->{g_stack}} > 0;
+		    }
+		}
+
 		# --- visibility ---
+		$t->{visibility} = 1;
 		if (exists $a->{'{}visibility'}) {
 			
-		    if ($a->{'{}visibility'}->{Value} eq 'public') {
+		    if ($a->{'{}visibility'}->{Value} eq 'group') {
 			$t->{visibility} = 2;
-			push @{$g_stack_top->{public}}, $t;
-			if ($t->{_not_att}) {
-			    # the current group can see
-			    unshift @{$g_stack_top->{visible}}, $t;
-			    # the parent group can see as well
-			    unshift @{$self->{g_stack}->[$#{$self->{g_stack}} - 1]->{visible}}, $t if $#{$self->{g_stack}} > 0;
-			}
-			if ($t->{_att}) { # to match against attributes
-			    # the current group can see
-			    unshift @{$g_stack_top->{att_visible}}, $t;
-			    # the parent group can see as well
-			    unshift @{$self->{g_stack}->[$#{$self->{g_stack}} - 1]->{att_visible}}, $t if $#{$self->{g_stack}} > 0;
-			}
-			    
+			push @{$g_stack_top->{vGroup}}, $t if $t->{_not_att};
+			push @{$g_stack_top->{vGroupA}}, $t if $t->{_att};
+
 		    } elsif ($a->{'{}visibility'}->{Value} eq 'global') {
 			$t->{visibility} = 3;
-			push @{$g_stack_top->{public}}, $t;
+
 			if ($t->{_not_att}) {
-			    # visible from any group
-			    unshift @{$self->{Sheet}->{global}}, $t;
-			    # the current group can see
-			    unshift @{$g_stack_top->{visible}}, $t;
-			    # the parent group can see as well
-			    unshift @{$self->{g_stack}->[$#{$self->{g_stack}} - 1]->{visible}}, $t if $#{$self->{g_stack}} > 0;
+			    push @{$g_stack_top->{vGroup}}, $t;
+			    unshift @{$self->{Sheet}->{dGroup}->{pc3}}, $t;
 			}
 			if ($t->{_att}) { # to match against attributes
-			    # visible from any group
-			    unshift @{$self->{Sheet}->{att_global}}, $t;
-			    # the current group can see
-			    unshift @{$g_stack_top->{att_visible}}, $t;
-			    # the parent group can see as well
-			    unshift @{$self->{g_stack}->[$#{$self->{g_stack}} - 1]->{att_visible}}, $t if $#{$self->{g_stack}} > 0;
+			    push @{$g_stack_top->{vGroupA}}, $t;
+			    unshift @{$self->{Sheet}->{dGroup}->{pc3A}}, $t;
 			}
 			
-		    } elsif ($a->{'{}visibility'}->{Value} ne 'private') {
-			$self->doError(204, 3, 
-				       $a->{'{}visibility'}->{Value})
+		    } elsif ($a->{'{}visibility'}->{Value} ne 'local') {
+			$self->doError(204, 3, $a->{'{}visibility'}->{Value});
 		    }
-
-		} else { # default is 'private'
-		    $t->{visibility} = 1;
-		    unshift @{$g_stack_top->{visible}}, $t if $t->{_not_att};
-		    unshift @{$g_stack_top->{att_visible}}, $t if $t->{_att};
 		}
-		
+	
 		# --- new-scope ---
 		if (exists $a->{'{}new-scope'}) {
 		    if ($a->{'{}new-scope'}->{Value} eq 'yes') {
@@ -319,8 +452,7 @@ sub start_element {
 	    if ($self->_allowed($el->{LocalName})) {
 
 		my $p = XML::STX::Template->new($self->{Sheet}->{next_tid},
-						$g_stack_top
-					       );
+						$g_stack_top);
 
 		# --- name ---
 		$self->doError(212, 3, '<stx:procedure>', 'name')
@@ -332,52 +464,53 @@ sub start_element {
 
 		$p->{name} = $self->_expand_qname($p->{name});
 
-		# --- visibility ---
-		if (exists $a->{'{}visibility'}) {
+		# --- public ---
+		$p->{public} = 0;
+		# visible from the current group
+		$g_stack_top->{pc1P}->{$p->{name}} = $p;
+
+		if (exists $a->{'{}public'}) {
+
+		    if ($a->{'{}public'}->{Value} eq 'yes') {
+			$p->{public} = 1;
+			#push @{$g_stack_top->{vPublicP}}, $p;
+
+			# visible from the parent group
+			$self->{g_stack}->[-2]->{pc1P}->{$p->{name}} = $p 
+			  if $#{$self->{g_stack}} > 0;
 			
-		    if ($a->{'{}visibility'}->{Value} eq 'public') {
-			$p->{visibility} = 2;
-			push @{$g_stack_top->{proc_public}}, $p;
-
-			# the current group can see
-			$self->doError(219, 3, 'procedure', $p->{name}) 
-			  if exists $g_stack_top->{proc_visible}->{$p->{name}};
-			$g_stack_top->{proc_visible}->{$p->{name}} = $p;
-
-			# the parent group can see as well
-			if ($#{$self->{g_stack}} > 0) {
-			    $self->doError(219, 3, 'procedure', $p->{name}) 
-			      if exists $self->{g_stack}->[$#{$self->{g_stack}} - 1]->{proc_visible}->{$p->{name}};
-			$self->{g_stack}->[$#{$self->{g_stack}} - 1]->{proc_visible}->{$p->{name}} = $p;
-			}
-			    
-		    } elsif ($a->{'{}visibility'}->{Value} eq 'global') {
-			$p->{visibility} = 3;
-			push @{$g_stack_top->{proc_public}}, $p;
-			# visible from any group
-			unshift @{$self->{Sheet}->{proc_global}}, $p;
-
-			# the current group can see
-			$self->doError(219, 3, 'procedure', $p->{name}) 
-			  if exists $g_stack_top->{proc_visible}->{$p->{name}};
-			$g_stack_top->{proc_visible}->{$p->{name}} = $p;
-
-			# the parent group can see as well
-			if ($#{$self->{g_stack}} > 0) {
-			    $self->doError(219, 3, 'procedure', $p->{name}) 
-			      if exists $self->{g_stack}->[$#{$self->{g_stack}} - 1]->{proc_visible}->{$p->{name}};
-			$self->{g_stack}->[$#{$self->{g_stack}} - 1]->{proc_visible}->{$p->{name}} = $p;
-			}
-			
-		    } elsif ($a->{'{}visibility'}->{Value} ne 'private') {
-			$self->doError(204, 3, $a->{'{}visibility'}->{Value})
+		    } elsif ($a->{'{}public'}->{Value} ne 'no') {
+			$self->doError(205, 3, 'public', $a->{'{}public'}->{Value});
 		    }
 
-		} else { # default is 'private'
-		    $p->{visibility} = 1;
-		    $g_stack_top->{proc_visible}->{$p->{name}} = $p;
+		} elsif ($e_stack_top->{LocalName} eq 'transform') {
+		    $p->{public} = 1;
+		    #push @{$g_stack_top->{vPublicP}}, $p;
+
+		    # visible from the parent group
+		    $self->{g_stack}->[-2]->{pc1P}->{$p->{name}} = $p 
+		      if $#{$self->{g_stack}} > 0;
 		}
-		
+
+		# --- visibility ---
+		$p->{visibility} = 1;
+		if (exists $a->{'{}visibility'}) {
+			
+		    if ($a->{'{}visibility'}->{Value} eq 'group') {
+			$p->{visibility} = 2;
+			push @{$g_stack_top->{vGroupP}}, $p;
+
+		    } elsif ($a->{'{}visibility'}->{Value} eq 'global') {
+			$p->{visibility} = 3;
+
+			push @{$g_stack_top->{vGroupP}}, $p;
+			$self->{Sheet}->{dGroup}->{pc3P}->{$p->{name}} = $p;
+			
+		    } elsif ($a->{'{}visibility'}->{Value} ne 'local') {
+			$self->doError(204, 3, $a->{'{}visibility'}->{Value});
+		    }
+		}
+
 		# --- new-scope ---
 		if (exists $a->{'{}new-scope'}) {
 		    if ($a->{'{}new-scope'}->{Value} eq 'yes') {
@@ -506,8 +639,7 @@ sub start_element {
 
 	    if ($self->_allowed($el->{LocalName})) {
 
-		my $last = $self->{c_template}->{instructions}->
-		  [$#{$self->{c_template}->{instructions}}]->[0];
+		my $last = $self->{c_template}->{instructions}->[-1]->[0];
 		$self->doError(218, 3, 'stx:else', 'stx:if', $last) 
 		  if $last != I_IF_END;
 
@@ -545,8 +677,7 @@ sub start_element {
 
 	    if ($self->_allowed($el->{LocalName})) {
 
- 		my $last = $self->{c_template}->{instructions}->
- 		  [$#{$self->{c_template}->{instructions}}]->[0];
+ 		my $last = $self->{c_template}->{instructions}->[-1]->[0];
  		$self->doError(218, 3, 'stx:otherwise', 'stx:when', $last)
 		  if $last != I_ELSIF_END;
 
@@ -566,8 +697,12 @@ sub start_element {
 		  if $a->{'{}select'}->{Value} =~ /\{|\}$/;
 
 		my $expr = $self->tokenize($a->{'{}select'}->{Value});
+
+		my $sep = exists $a->{'{}separator'} 
+		  ? $self->_avt($a->{'{}separator'}->{Value}) : ' ';
+
 		push @{$self->{c_template}->{instructions}},
-		  [I_CHARACTERS, $expr];
+		  [I_CHARACTERS, $expr, $sep];
 		#print "COMP: >CHARACTER\n";
 	    }
 
@@ -604,13 +739,8 @@ sub start_element {
 
 		my $qn = $self->_avt($a->{'{}name'}->{Value});
 
-		my $ns; 
-		if (exists $a->{'{}namespace'}) {
-		    $ns = $self->_avt($a->{'{}namespace'}->{Value});
-
-		} else {
-		    $ns = undef;
-		}
+		my $ns = exists $a->{'{}namespace'}
+		  ? $self->_avt($a->{'{}namespace'}->{Value}) : undef; 
 
 		push @{$self->{c_template}->{instructions}},
 		  [I_ELEMENT_START, $qn, $ns];
@@ -627,13 +757,8 @@ sub start_element {
 
 		my $qn = $self->_avt($a->{'{}name'}->{Value});
 
-		my $ns; 
-		if (exists $a->{'{}namespace'}) {
-		    $ns = $self->_avt($a->{'{}namespace'}->{Value});
-
-		} else {
-		    $ns = undef;
-		}
+		my $ns = exists $a->{'{}namespace'}
+		  ? $self->_avt($a->{'{}namespace'}->{Value}) : undef; 
 
 		push @{$self->{c_template}->{instructions}},
 		  [I_ELEMENT_END, $qn, $ns];
@@ -663,13 +788,8 @@ sub start_element {
 
 		my $qn = $self->_avt($a->{'{}name'}->{Value});
 
-		my $ns; 
-		if (exists $a->{'{}namespace'}) {
-		    $ns = $self->_avt($a->{'{}namespace'}->{Value});
-
-		} else {
-		    $ns = undef;
-		}
+		my $ns = exists $a->{'{}namespace'}
+		  ? $self->_avt($a->{'{}namespace'}->{Value}) : undef; 
 
 		my $sel = exists $a->{'{}select'} ? 
 		  $self->tokenize($a->{'{}select'}->{Value}) : undef;
@@ -790,7 +910,6 @@ sub start_element {
 		      = $keep_value;
  		    #print "COMP: >GROUP_VARIABLE\n";
 		}
-
 	    }
 
 	# <stx:param> ----------------------------------------
@@ -845,25 +964,44 @@ sub start_element {
 		      [I_PARAMETER_START, $name, $select, $default_select, $req];
 		    #print "COMP: >PARAMETER_START\n";
 
-		# stylesheet parameter ------------------------------
+		# stylesheet parameter ------------------------------ zzz
 		} else {
 
 		    # parameter already declared
 		    $self->doError(211, 3, 'Stylesheet parameter', "\'$name\'") 
-		      if $g_stack_top->{vars}->[0]->{$name};
+		      if $self->{Sheet}->{dGroup}->{vars}->[0]->{$name};
 
 		    # actual value
-		    $g_stack_top->{vars}->[0]->{$name}->[0]
+		    $self->{Sheet}->{dGroup}->{vars}->[0]->{$name}->[0]
 		      = $self->_static_eval($select);
 		    # init value
-		    $g_stack_top->{vars}->[0]->{$name}->[1]
-		      = clone($g_stack_top->{vars}->[0]->{$name}->[0]);
+		    $self->{Sheet}->{dGroup}->{vars}->[0]->{$name}->[1]
+		      = clone($self->{Sheet}->{dGroup}->{vars}->[0]->{$name}->[0]);
 		    # keep value
-		    $g_stack_top->{vars}->[0]->{$name}->[2] = 0;
+		    $self->{Sheet}->{dGroup}->{vars}->[0]->{$name}->[2] = 0;
 
 		    # list of params
-		    $g_stack_top->{pars}->{$name} = $req;
+		    $self->{Sheet}->{dGroup}->{pars}->{$name} = $req;
  		    #print "COMP: >GROUP_VARIABLE - parameter\n";
+
+
+# 		    # parameter already declared
+# 		    $self->doError(211, 3, 'Stylesheet parameter', "\'$name\'") 
+# 		      if $g_stack_top->{vars}->[0]->{$name};
+
+# 		    # actual value
+# 		    $g_stack_top->{vars}->[0]->{$name}->[0]
+# 		      = $self->_static_eval($select);
+# 		    # init value
+# 		    $g_stack_top->{vars}->[0]->{$name}->[1]
+# 		      = clone($g_stack_top->{vars}->[0]->{$name}->[0]);
+# 		    # keep value
+# 		    $g_stack_top->{vars}->[0]->{$name}->[2] = 0;
+
+# 		    # list of params
+# 		    $g_stack_top->{pars}->{$name} = $req;
+#  		    #print "COMP: >GROUP_VARIABLE - parameter\n";
+
 		}
 
 	    }
@@ -1072,10 +1210,25 @@ sub end_element {
 
 	# <stx:transform> ----------------------------------------
 	if ($el->{LocalName} eq 'transform') {
-	    # nothing else is allowed
-	    $self->_sort_templates($self->{Sheet}->{dGroup}->{visible});
-	    $self->_sort_templates($self->{Sheet}->{global});
-	    $self->{end} = 1;
+
+	    if ($self->{include}) {
+		#$self->_dump_g_stack;
+		my $g = pop @{$self->{g_stack}};
+		$self->_sort_templates($g->{pc1});
+		$self->_sort_templates($g->{pc1A});
+		$self->_sort_templates($g->{pc2});
+		$self->_sort_templates($g->{pc2A});
+
+	    } else {
+		# nothing else is allowed
+		$self->_sort_templates($self->{Sheet}->{dGroup}->{pc1});
+		$self->_sort_templates($self->{Sheet}->{dGroup}->{pc1A});
+		$self->_sort_templates($self->{Sheet}->{dGroup}->{pc2});
+		$self->_sort_templates($self->{Sheet}->{dGroup}->{pc2A});
+		$self->_sort_templates($self->{Sheet}->{dGroup}->{pc3});
+		$self->_sort_templates($self->{Sheet}->{dGroup}->{pc3A});
+		$self->{end} = 1;
+	    }
 
 	# <stx:process-children> ----------------------------------------
 	} elsif ($el->{LocalName} eq 'process-children') {
@@ -1135,7 +1288,10 @@ sub end_element {
 	} elsif ($el->{LocalName} eq 'group') {
 	    #$self->_dump_g_stack;
 	    my $g = pop @{$self->{g_stack}};
-	    $self->_sort_templates($g->{visible});
+	    $self->_sort_templates($g->{pc1});
+	    $self->_sort_templates($g->{pc1A});
+	    $self->_sort_templates($g->{pc2});
+	    $self->_sort_templates($g->{pc2A});
 
 	# <stx:template> ----------------------------------------
 	} elsif ($el->{LocalName} eq 'template') {
@@ -1241,6 +1397,7 @@ sub end_element {
     }
 
     my $e = pop @{$self->{e_stack}};
+
     # end of local variable visibility
     foreach (@{$e->{vars}}) {
 	push @{$self->{c_template}->{instructions}}, [I_VARIABLE_SCOPE_END, $_];
@@ -1263,7 +1420,7 @@ sub characters {
 
     # whitespace only
     if ($char->{Data} =~ /^\s*$/) {
-	my $parent = $self->{e_stack}->[$#{$self->{e_stack}}];
+	my $parent = $self->{e_stack}->[-1];
 	if ($parent->{NamespaceURI} eq STX_NS_URI
 	   and $parent->{LocalName} =~ /^(text|cdata)$/) {
 
@@ -1387,7 +1544,7 @@ sub match_priority {
     foreach my $path (split('\|',$pattern)) {
 
 	my @steps = split('/|//',$path);
-	my $last = $steps[$#steps];
+	my $last = $steps[-1];
 	my $p = 0.5;
 
 	if ($#steps == 0) {
@@ -1425,23 +1582,22 @@ sub tokenize {
     #print "TOK: tokenizing: $path\n";
     
     while($path =~ m/\G
-        \s* # ignore all whitespace
-        ( # tokens
-            $LITERAL|
-            $DOUBLE_RE| # Match double numbers
-            $NUMBER_RE| # Match digits
-            \.\.| # match parent
-            \.| # match current
-            $NODE_TYPE| # match node type
-            processing-instruction|
-            \@($NCWild|$QName|$QNWild)| # match attrib
-            \$$QName| # match variable reference
-            $NCWild|$QName|$QNWild| # NCName
+        \s*                                   # ignore all whitespace
+        (   $LITERAL|                         # literal
+            $DOUBLE_RE|                       # double numbers
+            $NUMBER_RE|                       # digits
+            \.\.|                             # parent
+            \.|                               # current node
+            $NODE_TYPE|                       # node type
+            processing-instruction|           # pi, to allow pi(target)  
+            \$$QName|                         # variable reference
+            $QName\(|                         # function
+            $NCWild|$QName|$QNWild|           # QName
+            \@($NCWild|$QName|$QNWild)|       # attribute
             \!=|<=|\-|>=|\/\/|and|or|mod|div| # multi-char seps
-            [,\+=\|<>\/\(\[\]\)]| # single char seps
-            (?<!(\@|\(|\[))\*| # multiply operator rules (see xpath spec)
-	    ($NCName:)?$FUNCTION|
-            $ # match end of query
+            [,\+=\|<>\/\(\[\]\)]|             # single char seps
+            (?<!(\@|\(|\[))\*|                # multiply operator rules
+            $                                 # end of query
         )
         \s* # ignore all whitespace
         /gcxso) {
@@ -1452,43 +1608,40 @@ sub tokenize {
             #print "TOK: token: $token\n";
 
 	    # resolving QNames ####################
-	    if ($token =~ m/^($NCName:)?$FUNCTION$/) {
-		$token = $self->_expand_prefixedQN($token);
+	    if ($token =~ /^$QName\($/o) {
+		$token = $self->_expand_prefixedFce($token);
 
-	    } elsif ($token =~ m/^$NCName$/ && $token !~ /^(and|or|mod|div)$/) {
-		my $c_group = $self->{g_stack}->[$#{$self->{g_stack}}];
-		if (exists $c_group->{Options}->{'default-stxpath-namespace'}) {
-		    $token = '{' 
-		      . $c_group->{Options}->{'default-stxpath-namespace'}
-			. '}' . $token;
+		$token = substr($token, 0, length($token) - 1);
+		push @tokens, $token, '(';
+
+	    } elsif ($token =~ /^$NCName$/o 
+		     && $token !~ /^(?:and|or|mod|div)$/) {
+
+ 		if ($self->{Sheet}->{Options}->
+		    {'stxpath-default-namespace'}->[-1]) {
+ 		    $token = '{' . $self->{Sheet}->{Options}->
+		      {'stxpath-default-namespace'}->[-1]
+ 			. '}' . $token;
 		}
+		push @tokens, $token;
 
-	    } elsif ($token =~ m/^$QName$/) {
-		$token = $self->_expand_prefixedQN($token);
+	    } elsif ($token =~ /^([\@\$])?($QName)$/o) {
+		$token = $1 . $self->_expand_prefixedQN($2);
+		push @tokens, $token;
 
-	    } elsif ($token =~ m/\^\@($QName)$/) {
-		$token = '@' . $self->_expand_prefixedQN($1);
-
-	    } elsif ($token =~ m/\^($NCName):\\*$/) {
-		$token = $self->_expand_prefixedQN("$1:lname");
+	    } elsif ($token =~ /^(\@)?($NCName):\*$/o) {
+		$token = $1 . $self->_expand_prefixedQN("$2:lname");
 		$token =~ s/lname$/*/;
+		push @tokens, $token;
 
-	    } elsif ($token =~ m/\^\\*:($NCName|\\*)$/) {
-		$token = "{*}$1";
+	    } elsif ($token =~ /^(\@)?\*:($NCName|\*)$/o) {
+		$token = $1 . "{*}$2";
+		push @tokens, $token;
 
-	    } elsif ($token =~ m/\^\@($NCName):\\*$/) {
-		$token = '@' . $self->_expand_prefixedQN("$1:lname");
-		$token =~ s/lname$/*/;
-
-	    } elsif ($token =~ m/\^\@\\*:($NCName|\\*)$/) {
-		$token = '@' . "{*}$1";
-
-	    } elsif ($token =~ m/^\$($QName)$/) {
-		$token = '$' . $self->_expand_prefixedQN($1);
-
+	    } else {
+		push @tokens, $token;
 	    }
             #print "TOK: exp. token: $token\n";
-            push @tokens, $token;
         }
     }
 
@@ -1499,6 +1652,7 @@ sub tokenize {
         $path =~ s/\t/ /g;
 	$self->doError(1, 3, $path, $marker);
     }
+
     return \@tokens;
 }
 
@@ -1506,7 +1660,7 @@ sub tokenize {
 
 my $s_group = ['variable','buffer','template','procedure','include','group'];
 
-my $s_top_level = [@$s_group, 'param', 'options', 'namespace-alias'];
+my $s_top_level = [@$s_group, 'param', 'namespace-alias'];
 
 my $s_text_constr = ['text','cdata','value-of','if','else','choose','_text'];
 
@@ -1562,7 +1716,7 @@ sub _allowed {
 	  unless $lname eq 'transform';
 
     } else {
-	my $parent = $self->{e_stack}->[$#{$self->{e_stack}}];
+	my $parent = $self->{e_stack}->[-1];
 
 	my $s_key = (defined $parent->{NamespaceURI} 
 	  and $parent->{NamespaceURI} eq STX_NS_URI)
@@ -1626,16 +1780,15 @@ sub _expand_prefixedQN {
     return $n[0] ? "{$n[0]}$n[2]" : $qname;
 }
 
-# debug ----------------------------------------
+# default function NS is used
+sub _expand_prefixedFce {
+    my ($self, $qname) = @_;
 
-sub _dump_options {
-    my $self = shift;
-
-    print join("\n", 
-	       map("$_=$self->{Sheet}->{Options}->{$_}",
-		   keys %{$self->{Sheet}->{Options}})), 
-		     "\n";
+    my @n = $self->{nsc}->process_attribute_name($qname);
+    return $n[0] ? "{$n[0]}$n[2]" : '{' . STX_FNS_URI . "}$n[2]";
 }
+
+# debug ----------------------------------------
 
 sub _dump_g_stack {
     my $self = shift;

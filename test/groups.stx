@@ -1,7 +1,6 @@
 <stx:transform version="1.0" 
-	       xmlns:stx="http://stx.sourceforge.net/2002/ns">
-
-  <stx:options strip-space="yes"/>
+  xmlns:stx="http://stx.sourceforge.net/2002/ns"
+  strip-space="yes">
 
   <stx:template match="/root">
     <stx:value-of select="name()"/>
@@ -12,7 +11,7 @@
 
   <stx:group>
 
-    <stx:template match="node" visibility="public">
+    <stx:template match="node" public="yes">
       <stx:text> </stx:text>
       <stx:value-of select="name()"/>
       <stx:text>.</stx:text>

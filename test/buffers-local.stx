@@ -1,7 +1,6 @@
 <stx:transform version="1.0" 
-	       xmlns:stx="http://stx.sourceforge.net/2002/ns">
-
-  <stx:options strip-space="yes"/>
+  xmlns:stx="http://stx.sourceforge.net/2002/ns"
+  strip-space="yes">
 
   <stx:template match="/root">
     <stx:buffer name="b1">

@@ -1,8 +1,6 @@
 <stx:transform version="1.0" 
 	       xmlns:stx="http://stx.sourceforge.net/2002/ns">
 
-  <stx:options/>
-
   <stx:template match="/root">
     <root>
       <stx:process-children/>
@@ -11,7 +9,7 @@
   
   <stx:group>
 
-    <stx:template match="node" visibility="public">
+    <stx:template match="node" public="yes">
       <stx:text>n:</stx:text>
       <stx:if test="@id">
 	<stx:text>t</stx:text>

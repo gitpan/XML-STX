@@ -3,11 +3,12 @@ BEGIN { require warnings if $] >= 5.006; }
 use strict;
 use XML::STX;
 use XML::STX::Compiler;
-
+use XML::STX::Runtime;
 
 # --------------------------------------------------
 package XML::STX::TrAX;
 # only base class for XML::STX; it acts as TransformerFactory
+@XML::STX::TrAX::ISA = qw(XML::STX::TrAX::Base);
 
 sub new_templates {
     my ($self, $source) = @_;
@@ -16,6 +17,9 @@ sub new_templates {
 
     my $comp = XML::STX::Compiler->new();
     $comp->{DBG} = $self->{DBG};
+    $comp->{URIResolver} = $self->{URIResolver};
+    $comp->{ErrorListener} = $self->{ErrorListener};
+    $comp->{SheetBase} = $source->{SystemId};
 
     $source->{XMLReader}->{Handler} = $comp;
     $source->{XMLReader}->{Source} = $source->{InputSource};
@@ -71,18 +75,15 @@ sub new_transformer {
 # --------------------------------------------------
 package XML::STX::TrAX::Transformer;
 use Clone qw(clone);
-@XML::STX::TrAX::Transformer::ISA = qw(XML::STX::Base);
+@XML::STX::TrAX::Transformer::ISA = qw(XML::STX::TrAX::Base XML::STX::Runtime);
 
 sub new {
     my ($class, $sheet) = @_;
 
-    my $stx = XML::STX->new();
-
     my $self = bless {Stylesheet => $sheet,
-		      STX => $stx,
 		      Parameters => {},
-		      URIResolver => undef,
-		      ErrorListener => undef,
+		      URIResolver => XML::STX::TrAX::URIResolver->new(),
+		      ErrorListener => XML::STX::TrAX::ErrorListener->new(),
 		     }, $class;
     return $self;
 }
@@ -93,21 +94,21 @@ sub transform {
     $source = $self->_check_source($source);
     $result = $self->_check_result($result);
 
-    $source->{XMLReader}->{Handler} = $self->{STX};
+    $source->{XMLReader}->{Handler} = $self;
     $source->{XMLReader}->{Source} = $source->{InputSource};
-    $self->{STX}->{Handler} = $result->{Handler};
-    $self->{STX}->{Sheet} = $self->{Stylesheet};
+    $self->{Handler} = $result->{Handler};
+    $self->{Sheet} = $self->{Stylesheet};
 
     # stylesheet parameters
-    foreach (keys %{$self->{STX}->{Sheet}->{dGroup}->{pars}}) {
+    foreach (keys %{$self->{Sheet}->{dGroup}->{pars}}) {
 	if (exists $self->{Parameters}->{$_}) {
 	    my $seq = $self->_to_sequence($self->{Parameters}->{$_});
-	    $self->{STX}->{Sheet}->{dGroup}->{vars}->[0]->{$_}->[0] = $seq;
-	    $self->{STX}->{Sheet}->{dGroup}->{vars}->[0]->{$_}->[1] = clone($seq);
+	    $self->{Sheet}->{dGroup}->{vars}->[0]->{$_}->[0] = $seq;
+	    $self->{Sheet}->{dGroup}->{vars}->[0]->{$_}->[1] = clone($seq);
 
 	} else {
 	    $self->doError(510, 3, $_) 
-	      if $self->{STX}->{Sheet}->{dGroup}->{pars}->{$_};
+	      if $self->{Sheet}->{dGroup}->{pars}->{$_};
 	}
     }
 
@@ -148,12 +149,148 @@ sub new {
 }
 
 
+# --------------------------------------------------
+package XML::STX::TrAX::URIResolver;
+@XML::STX::TrAX::URIResolver::ISA = qw(XML::STX::TrAX::Base);
+
+sub new {
+    my $class = shift;
+    my $options = ($#_ == 0) ? shift : { @_ };
+
+    my $self = bless $options, $class;
+    return $self;
+}
+
+sub resolve {
+    my ($self, $uri, $base) = @_;
+
+    # tbd: resolving with Sources or Results
+
+    if ($base and $uri !~ /^[a-zA-Z]+[a-zA-Z\d\+\-\.]*:/) {
+	$base =~ s/[^\/]+$//;
+	$uri = $base . $uri;
+    }
+
+    my $reader = $self->_get_parser();
+    return XML::STX::TrAX::SAXSource->new($reader, {SystemId => $uri});
+}
+
+
+# --------------------------------------------------
+package XML::STX::TrAX::ErrorListener;
+
+sub new {
+    my $class = shift;
+    my $options = ($#_ == 0) ? shift : { @_ };
+
+    my $self = bless $options, $class;
+    return $self;
+}
+
+sub warning {
+    my ($self, $exception) = @_;
+
+    print STDERR $exception->{Message};
+}
+
+sub error {
+    my ($self, $exception) = @_;
+
+    print STDERR $exception->{Message};
+}
+
+sub fatal_error {
+    my ($self, $exception) = @_;
+
+    croak $exception->{Message};
+}
+
+# --------------------------------------------------
+package XML::STX::TrAX::Base;
+
+sub _init {
+    my $self = shift;
+
+    # default uri resolver
+    $self->{URIResolver} = XML::STX::TrAX::URIResolver->new();
+    $self->{ErrorListener} = XML::STX::TrAX::ErrorListener->new();
+}
+
+sub _get_parser() {
+    my $self = shift;
+
+    my @preferred = ('XML::SAX::Expat',
+		     'XML::LibXML::SAX::Parser');
+
+    unshift @preferred, $self->{Parser} if $self->{Parser};
+
+    foreach (@preferred) {
+	$@ = undef;
+	eval "require $_;";
+	unless ($@) {
+	    return eval "$_->new()";
+	}    }
+    # fallback
+    return XML::SAX::PurePerl->new();
+}
+
+sub _get_writer() {
+    my $self = shift;
+
+    my @preferred = ('XML::SAX::Writer');
+
+    unshift @preferred, $self->{Writer} if $self->{Writer};
+
+    foreach (@preferred) {
+	$@ = undef;
+	eval "require $_;";
+	unless ($@) {
+	    return eval "$_->new()";
+	}    }
+    # fallback
+    return XML::STX::Writer->new();
+}
+
+sub _check_source {
+    my ($self, $source) = @_;
+
+    if (ref $source eq 'XML::STX::TrAX::SAXSource') {
+	return $source;
+
+    } elsif (ref $source eq 'HASH' and defined $source->{SystemId}) {
+	my $reader = $self->_get_parser();
+	return XML::STX::TrAX::SAXSource->new($reader, $source);
+
+    } elsif (ref $source eq '') {
+	my $reader = $self->_get_parser();
+	return XML::STX::TrAX::SAXSource->new($reader, {SystemId => $source});
+
+     } else {
+	     $self->doError(509, 3, ref $source, 'source');
+     }
+}
+
+sub _check_result {
+    my ($self, $result) = @_;
+
+    if (ref $result eq 'XML::STX::TrAX::SAXResult') {
+	return $result;
+
+    } elsif (not defined $result) {
+	my $writer = $self->_get_writer();
+	return XML::STX::TrAX::SAXResult->new($writer);
+
+     } else {
+	 $self->doError(509, 3, ref $result, 'result');
+     }
+}
+
 1;
 __END__
 
 =head1 NAME
 
-XML::STX::TrAX - objects for TrAX-like interface
+XML::STX::TrAX - a TrAX-like interface
 
 =head1 SYNOPSIS
 

@@ -1,9 +1,8 @@
 <stx:transform version="1.0" 
   xmlns:stx="http://stx.sourceforge.net/2002/ns"
-  xmlns:pre="http://test_ns">
-
-  <stx:options strip-space="yes" 
-    default-stxpath-namespace="http://koko"/>
+  xmlns:pre="http://test_ns"
+  stxpath-default-namespace="http://koko"
+  strip-space="yes">
 
   <stx:template match="/root">
     <stx:copy>

@@ -1,7 +1,6 @@
 <stx:transform version="1.0" 
-	       xmlns:stx="http://stx.sourceforge.net/2002/ns">
-
-  <stx:options strip-space="yes"/>
+  xmlns:stx="http://stx.sourceforge.net/2002/ns"
+  strip-space="yes">
 
   <stx:template match="list">
     <l i="{count(//*)}">
@@ -15,7 +14,7 @@
 
   <stx:group name="g1">
 
-    <stx:template match="li" visibility="public">
+    <stx:template match="li" public="yes">
       <stx:value-of select="concat('i.',position())"/>
     </stx:template>
   

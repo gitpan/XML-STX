@@ -1,5 +1,25 @@
 Revision history for Perl extension XML::STX.
 
+0.40 May 29, 2003
+	- options moved to stx:transform and stx:group
+	- new matching mechanism (3 precedence categories,
+          'visibility' and 'public' attributes)
+	- new visibility applied to procedures
+	- basic URIResolver implemented
+	- stx:include (@href)
+	- functions treated as QNames
+	- added STXPath functions: string-join, subsequence, node-kind,
+	  ends-with, avg, sum, min, max, round, floor, ceiling, exists
+	- removed functions: get-node, level, sublist, prefix
+	- existing functions revised and updated 
+          (STX WD 5 May 03, F&O WD 2 May 03)
+	- ErrorListener implemented
+	- semantics of stx:value-of changed, added @separator
+	- default-stxpath-namespace renamed to stxpath-default-namespace
+	- STX.pm split to STX.pm (factory) and Runtime.pm
+	  (no API changes)
+	- bug fixes (nested parameter passing, unary -)
+
 0.22 April 10, 2003
 	- stx:with-param (@name, @select, content)
 	  parameters passed with process-children,

@@ -4,7 +4,11 @@ package TestHandler;
 
 sub new {
     my $type = shift;
-    return bless {result => ''}, $type;
+    return bless {result => '',
+		  warnings => 0,
+		  errors => 0,
+		  fatals => 0,
+		 }, $type;
 }
 
 # content --------------------------------------------------
@@ -23,9 +27,12 @@ sub start_element {
     my ($self, $element) = @_;
     
     $self->{result} .= "<$element->{Name} ";
-    foreach (keys %{$element->{Attributes}}) {
+
+    # attributes are ordered to get predictable (and testable) results
+    foreach (sort keys %{$element->{Attributes}}) {
 	$self->{result} .= "$element->{Attributes}->{$_}->{Name}=\"$element->{Attributes}->{$_}->{Value}\" ";
     }
+
     $self->{result} .= ">";
 }
 
@@ -82,19 +89,19 @@ sub end_dtd {
 sub warning {
     my ($self, $exception) = @_;
     
-    $self->{result} .= "Warning: $exception->{Message}\n";
+    $self->{warnings}++;
 }
 
 sub error {
     my ($self, $exception) = @_;
     
-    $self->{result} .= "Error: $exception->{Message}\n";
+    $self->{errors}++;
 }
 
 sub fatal_error {
     my ($self, $exception) = @_;
     
-    $self->{result} .= "Fatal Error: $exception->{Message}\n";
+    $self->{fatals}++;
 }
 
 1;

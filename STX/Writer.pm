@@ -1,7 +1,7 @@
 # A fallback SAX writer 
 
 package XML::STX::Writer;
-$VERSION = '0.01';
+$VERSION = '0.02';
 
 sub new {
     my $class = shift;
@@ -40,6 +40,12 @@ sub end_element {
 sub characters {
     my ($self, $characters) = @_;
     
+    unless ($self->{CDATA}) {
+	$characters->{Data} =~ s/&/&amp;/g;
+	$characters->{Data} =~ s/</&lt;/g;
+	$characters->{Data} =~ s/>/&gt;/g;
+    }
+
     print $characters->{Data};
 }
 
@@ -54,12 +60,14 @@ sub processing_instruction {
 sub start_cdata {
     my $self = shift;
 
+    $self->{CDATA} = 1;
     print '<![CDATA[';
 }
 
 sub end_cdata {
     my $self = shift;
 
+    $self->{CDATA} = 0;
     print ']]>';
 }
 

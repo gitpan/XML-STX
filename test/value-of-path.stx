@@ -1,7 +1,7 @@
 <stx:transform version="1.0" 
-	       xmlns:stx="http://stx.sourceforge.net/2002/ns">
+  xmlns:stx="http://stx.sourceforge.net/2002/ns"
+  strip-space="yes">
 
-  <stx:options strip-space="yes"/>
   <stx:variable name="var" select="'tek'"/>
 
   <stx:template match="/root/node[1]">

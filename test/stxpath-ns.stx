@@ -1,9 +1,7 @@
 <stx:transform version="1.0" 
   xmlns:stx="http://stx.sourceforge.net/2002/ns"
-  xmlns:test="http://test_ns">
-
-  <stx:options strip-space="yes"/>
-
+  xmlns:test="http://test_ns"
+  strip-space="yes">
 
   <stx:template match="test:node">
     <stx:text>OK</stx:text>

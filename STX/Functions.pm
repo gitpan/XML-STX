@@ -4,32 +4,46 @@ require 5.005_02;
 BEGIN { require warnings if $] >= 5.006; }
 use strict;
 use XML::STX::Base;
+use POSIX ();
 
 # --------------------------------------------------
 # functions
 # --------------------------------------------------
-# string()
-# boolean()
-# number()
-# normalize-space()
+# empty()
+# exists()
+# item-at()
+# subsequence()
+
 # name()
 # namespace-uri()
 # local-name()
-# prefix()
-# get-node()
-# level()
+# node-kind()
+
+# not()
+
+# concat()
+# string-join()
 # starts-with()
+# ends-with()
 # contains()
 # substring()
 # substring-before()
 # substring-after()
 # string-length()
-# concat()
+# normalize-space()
 # translate()
-# count()
-# empty()
-# item-at()
-# sublist()
+
+# floor()
+# ceiling()
+
+# sum()
+# avg()
+# min()
+# max()
+
+# string()
+# boolean()
+# number()
 
 # NUMBER = number(VALUE) --------------------
 sub F_number($$){
@@ -151,7 +165,7 @@ sub F_string($$){
 }
 
 # BOOL = not(seq) --------------------
-sub F_not($$){
+sub F_not($){
     my ($self, $seq) = @_;
 
     my $bool = $self->F_boolean($seq);
@@ -165,111 +179,121 @@ sub F_not($$){
 }
 
 # STRING = normalize-space(string) --------------------
-sub F_normalize_space($$){
+sub F_normalize_space($){
     my ($self, $seq) = @_;
 
-    if (@{$seq} == 0) {
-	return $seq;
+    return [] unless $seq->[0];
 
-    } else {
-	my $str = $self->F_string($seq);
-	$str->[0] =~ s/^\s+([^\s]*)/$1/;
-	$str->[0] =~ s/([^\s]*)\s+$/$1/;
-	$str->[0] =~ s/\s{2,}/ /g;
-	return [ $str ];
-    }
+    my $str = $seq->[0]->[1] == STX_STRING 
+      ? $seq->[0] : $self->F_string($seq->[0]);
+
+    $str->[0] =~ s/^\s+([^\s]*)/$1/;
+    $str->[0] =~ s/([^\s]*?)\s+$/$1/;
+    $str->[0] =~ s/\s{2,}/ /g;
+
+    return [ $str ];
 }
 
 # STRING = name(node) --------------------
-sub F_name($$){
+sub F_name($){
     my ($self, $seq) = @_;
 
-    if ($seq->[0] and $seq->[0]->[1] == STX_NODE 
-	and ($seq->[0]->[0]->{Type} == 1 or $seq->[0]->[0]->{Type} == 6)) {
+    return [['',STX_STRING]] if @{$seq} == 0;
 
-	return [[$seq->[0]->[0]->{Name},STX_STRING]];
+    if ($seq->[0] and $seq->[0]->[1] == STX_NODE) {
+
+	if ($seq->[0]->[0]->{Type} == 1  or $seq->[0]->[0]->{Type} == 6) {
+	    return [[$seq->[0]->[0]->{Name},STX_STRING]];
+
+	} elsif ($seq->[0]->[0]->{Type} == 4) {
+	    return [[$seq->[0]->[0]->{Target},STX_STRING]];
+
+	} else {
+	    return [['',STX_STRING]];
+	}
 
     } else {
-	$self->doError('105', 3, 'name', 
-		       'node-element/attribute', $self->_type($seq));
+	$self->doError('105', 3, 'name', 'node', $self->_type($seq));
     }
 }
 
 # STRING = namespace-uri(node) --------------------
-sub F_namespace_uri($$){
+sub F_namespace_uri($){
     my ($self, $seq) = @_;
 
-    if ($seq->[0] and $seq->[0]->[1] == STX_NODE
-	and ($seq->[0]->[0]->{Type} == 1 or $seq->[0]->[0]->{Type} == 6)) {
+    return [['',STX_STRING]] if @{$seq} == 0;
 
-	return [[$seq->[0]->[0]->{NamespaceURI},STX_STRING]]
-	  if $seq->[0]->[0]->{NamespaceURI};
-	return [['',STX_STRING]];
+    if ($seq->[0] and $seq->[0]->[1] == STX_NODE) {
+
+	if ($seq->[0]->[0]->{Type} == 1 or $seq->[0]->[0]->{Type} == 6) {
+	    return [[$seq->[0]->[0]->{NamespaceURI},STX_STRING]]
+	      if $seq->[0]->[0]->{NamespaceURI};
+	    return [['',STX_STRING]];
+
+	} else {
+	    return [['',STX_STRING]];
+	}
 
     } else {
-	$self->doError('105', 3, 'namespace-uri', 
-		       'node-element/attribute', $self->_type($seq));
+	$self->doError('105', 3, 'namespace-uri', 'node', $self->_type($seq));
     }
 }
 
 # STRING = local-name(node) --------------------
-sub F_local_name($$){
+sub F_local_name($){
     my ($self, $seq) = @_;
 
-    if ($seq->[0] and $seq->[0]->[1] == STX_NODE
-	and ($seq->[0]->[0]->{Type} == 1 or $seq->[0]->[0]->{Type} == 6)) {
+    return [['',STX_STRING]] if @{$seq} == 0;
 
-	return [[$seq->[0]->[0]->{LocalName},STX_STRING]]
-	  if $seq->[0]->[0]->{LocalName};
-	return [[$seq->[0]->[0]->{Name},STX_STRING]];
+    if ($seq->[0] and $seq->[0]->[1] == STX_NODE) {
+
+	if ($seq->[0]->[0]->{Type} == 1 or $seq->[0]->[0]->{Type} == 6) {
+	    return [[$seq->[0]->[0]->{LocalName},STX_STRING]]
+	      if $seq->[0]->[0]->{LocalName};
+	    return [[$seq->[0]->[0]->{Name},STX_STRING]];
+
+	} elsif ($seq->[0]->[0]->{Type} == 4) {
+	    return [[$seq->[0]->[0]->{Target},STX_STRING]];
+
+	} else {
+	    return [['',STX_STRING]];
+	}
 
     } else {
-	$self->doError('105', 3, 'local-name', 
-		       'node-element/attribute', $self->_type($seq));
+	$self->doError('105', 3, 'local-name', 'node', $self->_type($seq));
     }
 }
 
-# STRING = prefix(node) --------------------
-sub F_prefix($$){
-    my ($self, $seq) = @_;
-
-    if ($seq->[0] and $seq->[0]->[1] == STX_NODE
-	and ($seq->[0]->[0]->{Type} == 1 or $seq->[0]->[0]->{Type} == 6)) {
-
-	return [[$seq->[0]->[0]->{Prefix},STX_STRING]] 
-	  if $seq->[0]->[0]->{Prefix};
-	return [['',STX_STRING]];
-
-    } else {
-	$self->doError('105', 3, 'prefix', 
-		       'node-element/attribute', $self->_type($seq));
-    }
-}
-
-# NODE = get-node(number) --------------------
-sub F_get_node($$){
-    my ($self, $seq) = @_;
-
-    my $n = ($seq->[0] and $seq->[0]->[1] == STX_NUMBER)
-      ? $seq->[0] : $self->F_number($seq);
-
-    my $index = sprintf("%.0f", $n->[0]);
-
-    return [[$self->{STX}->{Stack}->[$index], STX_NODE]]
-      if $self->{STX}->{Stack}->[$index];
-    return [];
-}
-
-# NUMBER = level(node) --------------------
-sub F_level($$){
+# STRING = node-kind(node) --------------------
+sub F_node_kind($){
     my ($self, $seq) = @_;
 
     if ($seq->[0] and $seq->[0]->[1] == STX_NODE) {
-	return [[$seq->[0]->[0]->{Index}, STX_NUMBER]];
+
+	if ($seq->[0]->[0]->{Type} == 1) {
+	    return [['element' ,STX_STRING]];
+
+	} elsif ($seq->[0]->[0]->{Type} == 2) {
+	    return [['text' ,STX_STRING]];
+
+	} elsif ($seq->[0]->[0]->{Type} == 3) {
+	    return [['cdata' ,STX_STRING]];
+
+	} elsif ($seq->[0]->[0]->{Type} == 4) {
+	    return [['processing-instruction' ,STX_STRING]];
+
+	} elsif ($seq->[0]->[0]->{Type} == 5) {
+	    return [['comment' ,STX_STRING]];
+
+	} elsif ($seq->[0]->[0]->{Type} == 6) {
+	    return [['attribute' ,STX_STRING]];
+
+	} else {
+	    return [['document' ,STX_STRING]];
+	}
 
     } else {
-	return [] unless $seq->[0];
-	$self->doError('105', 3, 'level', 'node', $self->_type($seq));
+	$self->doError('105', 3, 'node-kind', 'node', $self->_type($seq));
     }
 }
 
@@ -286,6 +310,24 @@ sub F_starts_with($$){
       ? $seq2->[0] : $self->F_string($seq2->[0]);
 
     return [[1, STX_BOOLEAN]] if index($str->[0], $start->[0]) == 0;
+    return [[0, STX_BOOLEAN]];
+}
+
+# BOOLEAN = ends-with(string, string) --------------------
+sub F_ends_with($$){
+    my ($self, $seq1, $seq2) = @_;
+
+    return [] unless $seq1->[0] and $seq2->[0];
+
+    my $str = $seq1->[0]->[1] == STX_STRING 
+      ? $seq1->[0] : $self->F_string($seq1->[0]);
+
+    my $end = $seq2->[0]->[1] == STX_STRING 
+      ? $seq2->[0] : $self->F_string($seq2->[0]);
+
+    return [[1, STX_BOOLEAN]] 
+      if substr($str->[0], length($str->[0]) - length($end->[0])) 
+	eq $end->[0];
     return [[0, STX_BOOLEAN]];
 }
 
@@ -309,8 +351,7 @@ sub F_contains($$){
 sub F_substring(){
     my ($self, $seq1, $seq2, $seq3) = @_;
 
-    return [] unless $seq1->[0] and $seq2->[0] 
-      and (not($seq3) or $seq3->[0]);
+    return [] unless $seq1->[0];
 
     my $str = $seq1->[0]->[1] == STX_STRING 
       ? $seq1->[0] : $self->F_string($seq1->[0]);
@@ -346,6 +387,7 @@ sub F_substring_before(){
     my $marker = $seq2->[0]->[1] == STX_STRING 
       ? $seq2->[0] : $self->F_string($seq2->[0]);
 
+    return [[$str->[0], STX_STRING]] if $marker->[0] eq '';
     $str->[0] =~ /^(.*?)$marker->[0]/ and return [[$1, STX_STRING]];
     return [['', STX_STRING]];
 }
@@ -362,6 +404,7 @@ sub F_substring_after(){
     my $marker = $seq2->[0]->[1] == STX_STRING 
       ? $seq2->[0] : $self->F_string($seq2->[0]);
 
+    return [[$str->[0], STX_STRING]] if $marker->[0] eq '';
     $str->[0] =~ /$marker->[0](.*)$/ and return [[$1, STX_STRING]];
     return [['', STX_STRING]];
 }
@@ -384,18 +427,36 @@ sub F_concat(){
     my $res = '';
 
     foreach (@arg) {
-	return [] unless $_->[0];
+	my $str = [''];
 
-	my $str = $_->[0]->[1] == STX_STRING 
-	  ? $_->[0] : $self->F_string($_);
-
+	if ($_->[0]) {
+	  $str = $_->[0]->[1] == STX_STRING 
+	    ? $_->[0] : $self->F_string($_);
+	}
+	
 	$res .= $str->[0];
     }
     return [[$res, STX_STRING]];
 }
 
+# NUMBER = string-join(string) --------------------
+sub F_string_join(){
+    my ($self, $seq, $sep) = @_;
+
+    return [['', STX_STRING]] unless $seq->[0];
+    $sep = [['', STX_STRING]] unless $sep->[0];
+
+    my $str = $sep->[0]->[1] == STX_STRING 
+      ? $sep->[0] : $self->F_string($sep->[0]);
+
+    return [[join($str->[0],
+		  map($_->[1] == STX_STRING ? $_->[0] : $self->F_string($_)->[0], 
+		      @$seq)), 
+	     STX_STRING]];
+}
+
 # STRING = translate(string, string, string) --------------------
-sub F_translate($$$$){
+sub F_translate($$$){
     my ($self, $s, $o, $n) = @_;
 
     return [] unless $s->[0] and $o->[0] and $n->[0];
@@ -410,29 +471,127 @@ sub F_translate($$$$){
     return [[$_, STX_STRING]];
 }
 
-# NUMBER = count(seq) --------------------
-sub F_count($){
+# NUMBER = floor(seq) --------------------
+sub F_floor($){
     my ($self, $seq) = @_;
 
-    if (ref($seq) eq 'ARRAY') {
-	return [[scalar @$seq, STX_NUMBER]];
+    return [] if @{$seq} == 0;
+    return [['NaN', STX_NUMBER]] if $seq->[0]->[0] == 'NaN';
 
-     } else {
-	 $self->doError('105', 3, 'count', 'sequence', ref($seq));
-     }
+    my $n = $seq->[0]->[1] == STX_NUMBER ? $seq->[0] : $self->F_number($seq);
+
+    return [[POSIX::floor($n->[0]), STX_NUMBER]];
+}
+
+# NUMBER = ceiling(seq) --------------------
+sub F_ceiling($){
+    my ($self, $seq) = @_;
+
+    return [] if @{$seq} == 0;
+    return [['NaN', STX_NUMBER]] if $seq->[0]->[0] == 'NaN';
+
+    my $n = $seq->[0]->[1] == STX_NUMBER ? $seq->[0] : $self->F_number($seq);
+
+    return [[POSIX::ceil($n->[0]), STX_NUMBER]];
+}
+
+# NUMBER = sum(seq) --------------------
+sub F_sum($){
+    my ($self, $seq) = @_;
+
+    my $sum = 0;
+
+    foreach (@{$seq}) {
+	if ($_->[1] == STX_NUMBER ) {
+	    $sum += $_->[0];
+
+	} else {
+	    my $n = $self->F_number([$_])->[0];
+	    $self->doError('108', 3, 'sum', $n) if $n eq 'NaN';
+	    $sum += $n;
+	}
+    }
+
+    return [[$sum, STX_NUMBER]];
+}
+
+# NUMBER = avg(seq) --------------------
+sub F_avg($){
+    my ($self, $seq) = @_;
+
+    return [] if @{$seq} == 0;
+    my $sum = 0;
+
+    foreach (@{$seq}) {
+	if ($_->[1] == STX_NUMBER ) {
+	    $sum += $_->[0];
+
+	} else {
+	    my $n = $self->F_number([$_])->[0];
+	    $self->doError('108', 3, 'avg', $n) if $n eq 'NaN';
+	    $sum += $n;
+	}
+    }
+    my $avg = $sum / @{$seq};
+    return [[$avg, STX_NUMBER]];
+}
+
+# NUMBER = min(seq) --------------------
+sub F_min($){
+    my ($self, $seq) = @_;
+
+    return [] if @{$seq} == 0;
+
+    my $min = $seq->[0]->[0];
+
+    foreach (@{$seq}) {
+	if ($_->[1] == STX_NUMBER ) {
+	    $min = $_->[0] if $_->[0] < $min;
+
+	} else {
+	    my $n = $self->F_number([$_])->[0];
+	    $self->doError('108', 3, 'min', $n) if $n eq 'NaN';
+	    $min = $n if $n < $min;
+	}
+    }
+    return [[$min, STX_NUMBER]];
+}
+
+# NUMBER = max(seq) --------------------
+sub F_max($){
+    my ($self, $seq) = @_;
+
+    return [] if @{$seq} == 0;
+
+    my $max = $seq->[0]->[0];
+
+    foreach (@{$seq}) {
+	if ($_->[1] == STX_NUMBER ) {
+	    $max = $_->[0] if $_->[0] > $max;
+
+	} else {
+	    my $n = $self->F_number([$_])->[0];
+	    $self->doError('108', 3, 'max', $n) if $n eq 'NaN';
+	    $max = $n if $n > $max;
+	}
+    }
+    return [[$max, STX_NUMBER]];
 }
 
 # BOOLEAN = empty(seq) --------------------
 sub F_empty($){
     my ($self, $seq) = @_;
 
-    if (ref($seq) eq 'ARRAY') {
-	return [[1, STX_BOOLEAN]] if scalar @$seq == 0;
-	return [[0, STX_BOOLEAN]];
+    return [[1, STX_BOOLEAN]] if scalar @$seq == 0;
+    return [[0, STX_BOOLEAN]];
+}
 
-     } else {
-	 $self->doError('105', 3, 'empty', 'sequence', ref($seq));
-     }
+# BOOLEAN = exists(seq) --------------------
+sub F_exists($){
+    my ($self, $seq) = @_;
+
+    return [[0, STX_BOOLEAN]] if scalar @$seq == 0;
+    return [[1, STX_BOOLEAN]];
 }
 
 # ITEM = item-at(seq, number) --------------------
@@ -441,23 +600,19 @@ sub F_item_at($$){
 
     my $n = ($idx->[0] and $idx->[0]->[1] == STX_NUMBER)
       ? $idx->[0] : $self->F_number($idx);
-
     my $i = sprintf("%.0f", $n->[0]);
 
-    if (ref($seq) eq 'ARRAY') {
-	return [] unless $seq->[0];
-	$self->doError('106', 3, $i, scalar @$seq) unless $seq->[$i-1];
-	$self->doError('107', 3, $i) unless $i>0;
-	return $seq->[$i-1];
-
-     } else {
-	 $self->doError('105', 3, 'item-at', 'sequence', ref($seq));
-     }
+    return [] unless $seq->[0];
+    $self->doError('106', 3, $i, scalar @$seq) unless $seq->[$i-1];
+    $self->doError('107', 3, $i) unless $i>0;
+    return [$seq->[$i-1]];
 }
 
-# seq = sublist(seq, number) --------------------
-sub F_sublist(){
+# seq = subsequence(seq, number) --------------------
+sub F_subsequence(){
     my ($self, $seq, $idx, $len) = @_;
+
+    return [] if @{$seq} == 0;
 
     my $n = ($idx->[0] and $idx->[0]->[1] == STX_NUMBER)
       ? $idx->[0] : $self->F_number($idx);
@@ -470,17 +625,11 @@ sub F_sublist(){
 	$l = sprintf("%.0f", $n->[0]);
     }
 
-    if (ref($seq) eq 'ARRAY') {
-	return [] unless $seq->[0];
-	$self->doError('106', 3, $i, scalar @$seq) unless $seq->[$i-1];
-	$self->doError('107', 3, $i) unless $i>0;
-	my @res = @$seq;
-	return [splice(@res, $i-1, $l)] if $l;
-	return [splice(@res, $i-1)];
-
-     } else {
-	 $self->doError('105', 3, 'sublist', 'sequence', ref($seq));
-     }
+    $self->doError('106', 3, $i, scalar @$seq) unless $seq->[$i-1];
+    $self->doError('107', 3, $i) unless $i>0;
+    my @res = @$seq;
+    return [splice(@res, $i-1, $l)] if $l;
+    return [splice(@res, $i-1)];
 }
 
 1;
