@@ -23,6 +23,7 @@ sub new {
     # turn NS processing on by default
     $self->set_feature('http://xml.org/sax/features/namespaces', 1);
 
+    $self->{SoS} = []; # stack of stacks to keep stacks on process-document
     return $self;
 }
 
@@ -31,9 +32,6 @@ sub new {
 sub start_document {
     my $self = shift;
     #print "STX: start_document\n";
-
-    $self->{Stack} = []; # ancestor stack
-    $self->{CharBuffer} = ''; # to join consequent text on input
 
     my $frame = {Type => STX_ROOT_NODE, 
 		 Index => 0, 
@@ -50,7 +48,7 @@ sub end_document {
     $self->_current_node([STXE_END_DOCUMENT]);
 
     # lookahead clean-up
-    $self->_current_node;
+    $self->_current_node([0]);
 
     return scalar @{$self->{Stack}};
 }
@@ -117,9 +115,15 @@ sub ignorable_whitespace {
 }
 
 sub start_prefix_mapping {
+    my ($self, $map) = @_;
+
+    $self->_current_node([STXE_START_PREF, $map]);
 }
 
 sub end_prefix_mapping {
+    my ($self, $map) = @_;
+
+    $self->_current_node([STXE_END_PREF, $map]);
 }
 
 sub skipped_entity {
@@ -132,7 +136,7 @@ sub start_cdata {
     #print "STX: start_cdata\n";
 
     if ($self->_get_base_group()->{Options}->{'recognize-cdata'}) {
-	$self->_current_node();
+	$self->_current_node([STXE_START_CDATA]);
 	$self->{CDATA} = 1; 
     }
 }
@@ -142,7 +146,7 @@ sub end_cdata {
     #print "STX: end_cdata\n";
 
     if ($self->_get_base_group()->{Options}->{'recognize-cdata'}) {
- 	$self->_current_node();
+ 	$self->_current_node([STXE_END_CDATA]);
   	$self->{CDATA} = 0;
     }
 }
@@ -242,6 +246,12 @@ sub _current_node {
 	} elsif ($current->[0] == STXE_COMMENT) {
 	    $self->_comment($current->[1]);
 
+	} elsif ($current->[0] == STXE_START_PREF) {
+	    $self->_start_prefix_mapping($current->[1]);
+
+	} elsif ($current->[0] == STXE_END_PREF) {
+	    $self->_end_prefix_mapping($current->[1]);
+
 	}
     }
 }
@@ -250,28 +260,25 @@ sub _start_document {
     my ($self, $root) = @_;
     #print "STX: > _start_document\n";
 
+    $self->{Stack} = []; # ancestor stack
     $self->{Counter} = []; # position()
     $self->{byEnd} = {}; # stack for instructions after process-children
-    $self->{OutputStack} = []; # output stack
-    $self->{LookUp} = [1]; # lookup for templates
-    $self->{SP} = XML::STX::STXPath->new($self);
+
+    $self->{OutputStack} ||= []; # output stack
+    $self->{LookUp} ||= [1]; # lookup for templates
+    $self->{SP} ||= XML::STX::STXPath->new($self);
 
     $self->{ns} = XML::NamespaceSupport->new({ xmlns => 1 });
-    $self->{ns_out} = XML::NamespaceSupport->new({ xmlns => 1 });
-    $self->{_g_prefix} = 0;
-    $self->{_stx_element} = [];
-    $self->{_self} = 0;
-    $self->{_handlers} = [];
-    $self->{_drivers} = [];
-    $self->{_c_template} = [];
-    $self->{_params} = [];
+    $self->{ns_out} ||= XML::NamespaceSupport->new({ xmlns => 1 });
+
+    $self->{_g_prefix} ||= 0;
+    $self->{_stx_element} ||= [];
+    $self->{_self} ||= 0;
+    $self->{_handlers} ||= [];
+    $self->{_c_template} ||= [];
+    $self->{_params} ||= [];
 
     $self->{ns}->pushContext;
-    # default NS for STXPath
-    if ($self->{Sheet}->{Options}->{'stxpath-default-namespace'}) {
-	$self->{ns}->declare_prefix('#default', 
-		    $self->{Sheet}->{Options}->{'stxpath-default-namespace'});
-    }
 
     # counter
     $self->{Counter}->[0] = {};
@@ -307,7 +314,7 @@ sub _end_document {
     $self->SUPER::end_document;
 
     $self->doError(504, 3, $self->{OutputStack}->[-1]->{Name})
-      if $#{$self->{OutputStack}} >= 0;    
+      if $#{$self->{OutputStack}} > -1 and $#{$self->{SoS}} == -1;    
 }
 
 sub _start_element {
@@ -331,24 +338,28 @@ sub _start_element {
 	$el->{Value} = '';
     }
 
+    # attributes
+    foreach (keys %{$el->{Attributes}}) {
+ 	$el->{Attributes}->{$_}->{Type} = STX_ATTRIBUTE_NODE;
+ 	$el->{Attributes}->{$_}->{Index} = $index + 1;
+     }
+
     # NS context + declarations
     $self->{ns}->pushContext;
-    foreach (keys %{$el->{Attributes}}) {
-	$el->{Attributes}->{$_}->{Type} = STX_ATTRIBUTE_NODE;
-	$el->{Attributes}->{$_}->{Index} = $index + 1;
-
- 	# default NS
- 	if ($el->{Attributes}->{$_}->{Name} eq 'xmlns') {
- 	    $self->{ns}->declare_prefix('#data_default',
- 					$el->{Attributes}->{$_}->{Value});
-
-	# prefixed NS
-	} elsif ($el->{Attributes}->{$_}->{Prefix} eq 'xmlns') {
-	    $self->{ns}->declare_prefix($el->{Attributes}->{$_}->{LocalName}, 
-					$el->{Attributes}->{$_}->{Value})
-	}
+    foreach (keys %{$self->{_start_prefmap}}) {
+	$self->{ns}->declare_prefix($_, $self->{_start_prefmap}->{$_});
     }
-
+    $self->{_start_prefmap} = {};
+    
+    # in-scope NS
+    $el->{inScopeNS} = {};
+    foreach ($self->{ns}->get_prefixes()) {
+	$el->{inScopeNS}->{$_} = $self->{ns}->get_uri($_);
+    }
+    if ($self->{ns}->get_uri('')) {
+	$el->{inScopeNS}->{''} = $self->{ns}->get_uri('');
+    }
+ 
     push @{$self->{Stack}}, $el;
     push @{$self->{LookUp}}, 0;
     $self->_process;
@@ -452,6 +463,18 @@ sub _comment {
     pop @{$self->{Stack}};
 }
 
+sub _start_prefix_mapping {
+    my ($self, $map) = @_;
+
+    $self->{_start_prefmap}->{$map->{Prefix}} = $map->{NamespaceURI};
+}
+
+sub _end_prefix_mapping {
+    my ($self, $map) = @_;
+
+    $self->{_end_prefmap}->{$map->{Prefix}} = $map->{NamespaceURI};
+}
+
 # process ----------------------------------------
 
 sub _process {
@@ -465,17 +488,15 @@ sub _process {
 
     if ($self->{LookUp}->[-2]) {
 
-	# visible namespaces
-	my $ns;
-	foreach ($self->{ns}->get_prefixes) {
-	    $ns->{$_} = $self->{ns}->get_uri($_);
-	}
 	# current node
 	my $node = $self->{Stack}->[-1];
 
+	# visible namespaces
+ 	my $ns = $node->{inScopeNS};
+
 	# current group
 	my $g;
-	if ($#{$self->{Stack}} == 0) {
+	if ($#{$self->{Stack}} == 0 and $#{$self->{SoS}} == -1) {
 	    # default group
 	    $g = $self->{Sheet}->{dGroup};
 	} else {
@@ -490,7 +511,11 @@ sub _process {
 		}
 	    } else {
 		# group of the recent matching template
-		$g = $self->{Stack}->[-2]->{Group}->[-1];
+		$g = $self->{Stack}->[-2] 
+		  # the active stack
+		  ? $self->{Stack}->[-2]->{Group}->[-1]
+		    # accessing original stack moved by process-docuemnt
+		    : $self->{SoS}->[-1]->[0]->[-1]->{Group}->[-1];
 	    }
 	}
 	#print "STX: base group $g->{gid}\n";
@@ -915,8 +940,8 @@ sub _run_template {
 	    my $nsuri = $at->{NamespaceURI} ? $at->{NamespaceURI} : '';
 	    $out->{Attributes}->{"{$nsuri}$at->{LocalName}"} = $at;
 
-	    if ($i->[3]) {
-		my $val = $self->_expand($i->[3], $ns);
+	    if ($i->[4]) {
+		my $val = $self->_expand($i->[4], $ns);
 		$val = $self->{SP}->F_normalize_space([[$val,STX_STRING]]);
 
 		$out->{Attributes}->{"{$nsuri}$at->{LocalName}"}->{Value}
@@ -1366,6 +1391,88 @@ sub _run_template {
  	    pop @{$self->{exG}->{$c_node->{Index} + 1}};
 	    pop @{$self->{_params}};
 
+  	# I_RES_DOC_START ----------------------------------------
+  	} elsif ($i->[0] == I_RES_DOC_START) {
+ 	    $out = $self->_send_element_start($out) if exists $out->{Name};
+
+ 	    my $href = $self->_expand($i->[1], $ns);
+	    $self->doError(502, 3, 'href', '<stx:result-document>',
+			   'URI reference', $href) 
+	      unless $href =~ /^$URIREF$/o;
+
+	    my $result = $self->{URIResolver}->resolve_result($href);	    
+
+  	    push @{$self->{_handlers}}, $self->{Handler};
+  	    $self->{Handler} = $result->{Handler};
+ 	    $self->{Methods} = {}; # to reset methods cached by XML::SAX::Base
+  	    #print "STX: new handler:$self->{Handler}\n";
+
+  	# I_RES_DOC_END ----------------------------------------
+  	} elsif ($i->[0] == I_RES_DOC_END) {
+ 	    $out = $self->_send_element_start($out) if exists $out->{Name};
+
+  	    $self->{Handler} = pop @{$self->{_handlers}};
+ 	    $self->{Methods} = {}; # to reset methods cached by XML::SAX::Base
+  	    #print "STX: orig handler:$self->{Handler}\n";
+
+ 	# I_P_DOC_START ----------------------------------------
+ 	} elsif ($i->[0] == I_P_DOC_START) {
+ 	    $out = $self->_send_element_start($out) if exists $out->{Name};
+
+ 	    $self->{_href} = $self->_eval($i->[1], $ns);
+ 	    $self->{_exg} = $i->[2];
+	    $self->{_base} = $i->[3];
+
+ 	    push @{$self->{_params}}, {};
+
+  	# I_P_DOC_END ----------------------------------------
+  	} elsif ($i->[0] == I_P_DOC_END) {
+
+  	    $self->{LookUp}->[-1] = 1;
+
+	    foreach (@{$self->{_href}}) {
+		# resolving href
+		my $base;
+		if ($self->{_base}) {
+		    $base = $self->_expand($self->{_base}, $ns);
+
+		} else {
+		    $base = ($_->[1] == STX_NODE) 
+		      ? $self->{Source}->[-1]->{SystemId} 
+			: $self->{Sheet}->{URI};
+		}
+		$self->doError(502, 3, 'base', '<stx:process-document>',
+			       'URI reference|#input|#stylesheet', $base) 
+		  unless $base =~ /^$URIREF$/o or $base eq '#stylesheet'
+		    or $base eq '#input';
+
+		my $uri = $self->{SP}->F_string([$_])->[0];
+		
+		my $source = $self->{URIResolver}->resolve($uri, $base);
+
+		$source->{XMLReader}->{Handler} = $self;
+		$source->{XMLReader}->{Source} = $source->{InputSource};
+
+		push @{$self->{Source}}, $source;
+		push @{$self->{SoS}}, 
+		  [$self->{Stack}, $self->{Counter}, $self->{byEnd},
+		   $self->{ns}, $self->{exG}];
+
+		push @{$self->{exG}->{0}}, $self->{_exg};
+
+		$self->change_stream(STXE_START_BUFFER);
+		$source->{XMLReader}->parse();
+		$self->change_stream(STXE_END_BUFFER);
+
+		pop @{$self->{Source}};
+		($self->{Stack},$self->{Counter},$self->{byEnd},$self->{ns}) 
+		  = @{pop @{$self->{SoS}}};
+	    }
+
+  	    $self->{_child_nodes} = $self->_child_nodes;
+  	    pop @{$self->{LookUp}};
+ 	    pop @{$self->{_params}};
+
 	# I_IF_START ----------------------------------------
 	} elsif ($i->[0] == I_IF_START) {
 
@@ -1433,13 +1540,7 @@ sub _expand {
     my ($self, $val, $ns) = @_;
 
     if (ref $val) {
-	my $seq = $self->{SP}->expr(
-			[ $self->{Stack}->[-1] ],
-			$val,
-			$ns,
-			{}
-			);
-	return $self->{SP}->F_string($seq)->[0];
+	return $self->{SP}->F_string($self->_eval($val,$ns))->[0];
 
     } else {
 	return $val;
@@ -1450,48 +1551,55 @@ sub _expand {
 sub _eval {
     my ($self, $val, $ns) = @_;
     
-    my $seq = $self->{SP}->expr(
-			[ $self->{Stack}->[-1] ],
-			$val,
-			$ns,
-			{}
-  		        );
-    return $seq;
+    return $self->{SP}->expr([ $self->{Stack}->[-1] ], $val, $ns, {});
 }
 
 sub _send_element_start {
     my ($self, $out) = @_;
 
-    $self->{ns_out}->pushContext;
-    $self->{ns_out}->declare_prefix($out->{Prefix}, $out->{NamespaceURI})
-      if $out->{NamespaceURI} or $out->{Prefix};
+    $self->{ns_out}->pushContext; #??? tady
 
-    foreach (keys %{$out->{Attributes}}) {
-	$self->{ns_out}->declare_prefix($out->{Attributes}->{$_}->{Prefix}, 
-					$out->{Attributes}->{$_}->{NamespaceURI})
-	  if $out->{Attributes}->{$_}->{NamespaceURI} 
-	    or $out->{Attributes}->{$_}->{Prefix};
+    $out->{Prefix} = '' unless $out->{Prefix};
+    my $nsuri = $self->{ns_out}->get_uri($out->{Prefix});
+
+    unless ($nsuri && $nsuri eq $out->{NamespaceURI}) {
+	if ($out->{Prefix} or $out->{NamespaceURI}) {
+
+	    $self->{ns_out}->declare_prefix($out->{Prefix}, $out->{NamespaceURI});
+	    $self->SUPER::start_prefix_mapping({Prefix => $out->{Prefix},
+					    NamespaceURI => $out->{NamespaceURI}});
+	}
     }
 
-    my @declared = $self->{ns_out}->get_declared_prefixes;
-    foreach (@declared) {
+    foreach (keys %{$out->{Attributes}}) {
 
-	my $key = $_ ? '{'. XMLNS_URI . "}$_" : '{}xmlns';
+	# removing declarations (these are passed with startPrefixMapping)
+	if ($out->{Attributes}->{$_}->{NamespaceURI} eq XMLNS_URI
+	   or $out->{Attributes}->{$_}->{Name} eq 'xmlns'
+	    or $out->{Attributes}->{$_}->{Prefix} eq 'xmlns') {
+	    
+	    delete $out->{Attributes}->{$_};
+	    next;
+	}
 
-	$out->{Attributes}->{$key}->{Name} 
-	  = $_ ? "xmlns:$_" : 'xmlns';
-	$out->{Attributes}->{$key}->{NamespaceURI} 
-	  = XMLNS_URI;
-  	$out->{Attributes}->{$key}->{LocalName} 
-  	  = $_;
-  	$out->{Attributes}->{$key}->{Prefix} 
-  	  = $_ ? 'xmlns' : '';
-  	$out->{Attributes}->{$key}->{Value} 
-  	  = $self->{ns_out}->get_uri($_);
+	$out->{Attributes}->{$_}->{Prefix} = '' 
+	  unless $out->{Attributes}->{$_}->{Prefix};
+	my $nsuri = $self->{ns_out}->get_uri($out->{Attributes}->{$_}->{Prefix});
 
-  	my $mapping = {Prefix => $_, 
-  		       NamespaceURI => $out->{Attributes}->{$key}->{Value}};
-  	$self->SUPER::start_prefix_mapping($mapping);
+	unless ($nsuri && $nsuri eq $out->{Attributes}->{$_}->{NamespaceURI}) {
+	    if ($out->{Attributes}->{$_}->{Prefix} 
+		or $out->{Attributes}->{$_}->{NamespaceURI}) {
+
+		$self->{ns_out}->declare_prefix(
+			$out->{Attributes}->{$_}->{Prefix}, 
+			$out->{Attributes}->{$_}->{NamespaceURI}
+					   );
+		$self->SUPER::start_prefix_mapping({
+			Prefix => $out->{Attributes}->{$_}->{Prefix},
+			NamespaceURI => $out->{Attributes}->{$_}->{NamespaceURI}
+					       });
+	    }
+	}
     }
 
     $self->SUPER::start_element($out);
@@ -1578,7 +1686,7 @@ sub _resolve_element {
     if (defined $i->[2]) {
 	my $ns_uri = $self->_expand($i->[2]);
 	
-	my $pre = $self->{ns}->get_prefix($ns_uri);
+	my $pre = $i->[3]->get_prefix($ns_uri);
 
 	# prefix already declared
 	if ($pre) {
@@ -1598,8 +1706,8 @@ sub _resolve_element {
 		
     # namespace not defined	
     } else {
-	my @ns = $aflag ? $self->{ns}->process_attribute_name($qname) 
-	  : $self->{ns}->process_element_name($qname);
+	my @ns = $aflag ? $i->[3]->process_attribute_name($qname) 
+	  : $i->[3]->process_element_name($qname);
 	$self->doError(501, 3, $qname)
 	  unless @ns;
 	$out->{Name} = $qname;
@@ -1701,7 +1809,7 @@ sub _frameDBG {
     my $self = shift;
 
     my $index = scalar @{$self->{Stack}} - 1;
-    print "===STACK:$index ";
+    print "===[$self->{Source}->[-1]->{SystemId}]STACK:$index ";
     foreach (@{$self->{Stack}}) {
 	if ($_->{Type} == STX_ELEMENT_NODE) {
 	    print "/", $_->{Name};	    

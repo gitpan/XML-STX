@@ -18,14 +18,18 @@ sub new_templates {
     my $comp = XML::STX::Compiler->new();
     $comp->{DBG} = $self->{DBG};
     $comp->{URIResolver} = $self->{URIResolver};
+    $comp->{URIResolver}->{Parser} = $self->{Parser};
+    $comp->{URIResolver}->{Writer} = $self->{Writer};
     $comp->{ErrorListener} = $self->{ErrorListener};
-    $comp->{SheetBase} = $source->{SystemId};
+    $comp->{URI} = $source->{SystemId};
 
     $source->{XMLReader}->{Handler} = $comp;
     $source->{XMLReader}->{Source} = $source->{InputSource};
     my $sheet = $source->{XMLReader}->parse();
+    $sheet->{URI} = $source->{SystemId};
 
-    return XML::STX::TrAX::Templates->new($sheet);
+    return XML::STX::TrAX::Templates->new($sheet, 
+					  $self->{Parser}, $self->{Writer});
 }
 
 sub new_source {
@@ -57,9 +61,11 @@ sub new_transformer {
 package XML::STX::TrAX::Templates;
 
 sub new {
-    my ($class, $sheet) = @_;
+    my ($class, $sheet, $parser, $writer) = @_;
 
     my $self = bless {Stylesheet => $sheet,
+		      Parser => $parser,
+		      Writer => $writer,
 		     }, $class;
     return $self;
 }
@@ -68,7 +74,8 @@ sub new {
 sub new_transformer {
     my $self = shift;
 
-    return XML::STX::TrAX::Transformer->new($self->{Stylesheet});
+    return XML::STX::TrAX::Transformer->new($self->{Stylesheet}, 
+					    $self->{Parser}, $self->{Writer});
 }
 
 
@@ -78,11 +85,14 @@ use Clone qw(clone);
 @XML::STX::TrAX::Transformer::ISA = qw(XML::STX::TrAX::Base XML::STX::Runtime);
 
 sub new {
-    my ($class, $sheet) = @_;
+    my ($class, $sheet, $parser, $writer) = @_;
 
-    my $self = bless {Stylesheet => $sheet,
+    my $self = bless {Sheet => $sheet,
 		      Parameters => {},
-		      URIResolver => XML::STX::TrAX::URIResolver->new(),
+		      Parser => $parser,
+		      Writer => $writer,
+		      URIResolver => XML::STX::TrAX::URIResolver->new($parser, 
+								      $writer),
 		      ErrorListener => XML::STX::TrAX::ErrorListener->new(),
 		     }, $class;
     return $self;
@@ -97,7 +107,7 @@ sub transform {
     $source->{XMLReader}->{Handler} = $self;
     $source->{XMLReader}->{Source} = $source->{InputSource};
     $self->{Handler} = $result->{Handler};
-    $self->{Sheet} = $self->{Stylesheet};
+    $self->{Source} = [$source];
 
     # stylesheet parameters
     foreach (keys %{$self->{Sheet}->{dGroup}->{pars}}) {
@@ -154,17 +164,18 @@ package XML::STX::TrAX::URIResolver;
 @XML::STX::TrAX::URIResolver::ISA = qw(XML::STX::TrAX::Base);
 
 sub new {
-    my $class = shift;
-    my $options = ($#_ == 0) ? shift : { @_ };
+    my ($class, $parser, $writer) = @_;
 
-    my $self = bless $options, $class;
+    my $self = bless {Parser => $parser,
+		      Writer => $writer,
+		     }, $class;
     return $self;
 }
 
 sub resolve {
     my ($self, $uri, $base) = @_;
 
-    # tbd: resolving with Sources or Results
+    # tbd: resolving with Sources
 
     if ($base and $uri !~ /^[a-zA-Z]+[a-zA-Z\d\+\-\.]*:/) {
 	$base =~ s/[^\/]+$//;
@@ -175,9 +186,24 @@ sub resolve {
     return XML::STX::TrAX::SAXSource->new($reader, {SystemId => $uri});
 }
 
+sub resolve_result {
+    my ($self, $uri, $base) = @_;
+
+    # tbd: resolving with Results
+
+    if ($base and $uri !~ /^[a-zA-Z]+[a-zA-Z\d\+\-\.]*:/) {
+	$base =~ s/[^\/]+$//;
+	$uri = $base . $uri;
+    }
+
+    my $handler = $self->_get_writer({Output => $uri});
+    return XML::STX::TrAX::SAXResult->new($handler, $uri);
+}
+
 
 # --------------------------------------------------
 package XML::STX::TrAX::ErrorListener;
+use Carp;
 
 sub new {
     my $class = shift;
@@ -208,16 +234,9 @@ sub fatal_error {
 # --------------------------------------------------
 package XML::STX::TrAX::Base;
 
-sub _init {
-    my $self = shift;
-
-    # default uri resolver
-    $self->{URIResolver} = XML::STX::TrAX::URIResolver->new();
-    $self->{ErrorListener} = XML::STX::TrAX::ErrorListener->new();
-}
-
 sub _get_parser() {
     my $self = shift;
+    my $options = ($#_ == 0) ? shift : { @_ };
 
     my @preferred = ('XML::SAX::Expat',
 		     'XML::LibXML::SAX::Parser');
@@ -228,14 +247,15 @@ sub _get_parser() {
 	$@ = undef;
 	eval "require $_;";
 	unless ($@) {
-	    return eval "$_->new()";
+	    return eval "$_->" . 'new($options)';
 	}    }
     # fallback
-    return XML::SAX::PurePerl->new();
+    return XML::SAX::PurePerl->new($options);
 }
 
 sub _get_writer() {
     my $self = shift;
+    my $options = ($#_ == 0) ? shift : { @_ };
 
     my @preferred = ('XML::SAX::Writer');
 
@@ -245,10 +265,10 @@ sub _get_writer() {
 	$@ = undef;
 	eval "require $_;";
 	unless ($@) {
-	    return eval "$_->new()";
+	    return eval "$_->" . 'new($options)';
 	}    }
     # fallback
-    return XML::STX::Writer->new();
+    return XML::STX::Writer->new($options);
 }
 
 sub _check_source {
@@ -261,7 +281,7 @@ sub _check_source {
 	my $reader = $self->_get_parser();
 	return XML::STX::TrAX::SAXSource->new($reader, $source);
 
-    } elsif (ref $source eq '') {
+    } elsif (not ref $source) {
 	my $reader = $self->_get_parser();
 	return XML::STX::TrAX::SAXSource->new($reader, {SystemId => $source});
 

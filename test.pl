@@ -36,7 +36,7 @@ while (<INDEX>) {
     my $templ_uri = "test/$ln[0].stx";
     my $data_uri = "test/_data$ln[1].xml";
 
-    my $stx = XML::STX->new();
+    my $stx = XML::STX->new(Writer => 'XML::STX::Writer');
 
     my $transformer = $stx->new_transformer($templ_uri);
 

@@ -1,16 +1,15 @@
-package XML::STX::Stylesheet;
-
 require 5.005_02;
 BEGIN { require warnings if $] >= 5.006; }
 use strict;
 
 # --------------------------------------------------
+package XML::STX::Stylesheet;
 
 sub new {
     my $class = shift;
 
     my $options = {'stxpath-default-namespace' => [''],
-		   'output-encoding' => undef,
+		   'output-encoding' => 'utf-8',
 		  };
 
     my $group = XML::STX::Group->new(0, undef);
@@ -20,7 +19,7 @@ sub new {
 		      dGroup => $group,
 		      next_gid => 1,
 		      next_tid => 1,
-		      named_templates => {},
+		      alias  => [], 
 		     }, $class;
     return $self;
 }

@@ -13,11 +13,15 @@ use POSIX ();
 # exists()
 # item-at()
 # subsequence()
+# insert-before()
+# remove()
 
 # name()
 # namespace-uri()
 # local-name()
 # node-kind()
+# get-in-scope-prefixes()
+# get-namespace-uri-for-prefix()
 
 # not()
 
@@ -295,6 +299,34 @@ sub F_node_kind($){
     } else {
 	$self->doError('105', 3, 'node-kind', 'node', $self->_type($seq));
     }
+}
+
+# SEQ = get-in-scope-prefixes(node) --------------------
+sub F_get_in_scope_prefixes($){
+    my ($self, $seq) = @_;
+
+    $self->doError('105', 3, 'get-in-scope-prefixes', 'element', 
+ 		   $self->_type($seq)) unless $seq->[0] 
+ 		     and $seq->[0]->[1] == STX_NODE
+ 		       and $seq->[0]->[0]->{Type} == 1; #element
+
+    return [map([$_, STX_STRING], sort keys %{$seq->[0]->[0]->{inScopeNS}})];
+}
+
+
+# STRING = get-namespace_uri-for-prefix(node, string) --------------------
+sub F_get_namespace_uri_for_prefix($$){
+    my ($self, $seq, $pref) = @_;
+
+    $self->doError('105', 3, 'get-namespaceuri-for-prefixs', 'element', 
+ 		   $self->_type($seq)) unless $seq->[0] 
+ 		     and $seq->[0]->[1] == STX_NODE
+ 		       and $seq->[0]->[0]->{Type} == 1; #element
+
+    my $str = $pref->[0]->[1] == STX_STRING 
+      ? $pref->[0] : $self->F_string($pref->[0]);
+
+    return [[$seq->[0]->[0]->{inScopeNS}->{$str->[0]}, STX_STRING]];
 }
 
 # BOOLEAN = starts-with(string, string) --------------------
@@ -630,6 +662,44 @@ sub F_subsequence(){
     my @res = @$seq;
     return [splice(@res, $i-1, $l)] if $l;
     return [splice(@res, $i-1)];
+}
+
+# seq = insert-before(seq, number, seq) --------------------
+sub F_insert_before(){
+    my ($self, $target, $pos, $insert) = @_;
+
+    my @tgt = @$target;
+    my @ins = @$insert;
+
+    return \@ins if @tgt == 0;
+    return \@tgt if @ins == 0;
+
+    my $n = ($pos->[0] and $pos->[0]->[1] == STX_NUMBER)
+      ? $pos->[0] : $self->F_number($pos);
+    my $i = sprintf("%.0f", $n->[0]);
+
+    $i = 1 if $i < 1;
+    $i = @tgt + 1 if $i > @tgt;
+
+    splice(@tgt, $i-1, 0, @ins);
+    return [@tgt];
+}
+
+# seq = remove(seq, number) --------------------
+sub F_remove(){
+    my ($self, $target, $pos) = @_;
+
+    return [] if @$target == 0;
+    my @tgt = @$target;
+
+    my $n = ($pos->[0] and $pos->[0]->[1] == STX_NUMBER)
+      ? $pos->[0] : $self->F_number($pos);
+    my $i = sprintf("%.0f", $n->[0]);
+
+    return \@tgt if $i < 1 or $i > @tgt;
+
+    splice(@tgt, $i-1, 1);
+    return [@tgt];
 }
 
 1;

@@ -379,6 +379,16 @@ sub fcCall {
 	$self->doError(15, 3, scalar @arg, $fce, 0) if @arg > 1;
 	return $self->F_node_kind($arg);
 
+    } elsif ($fce eq 'get-in-scope-prefixes') {
+	$self->doError(216, 3, "\'$fce()\'") unless $nodes;
+	$self->doError(15, 3, scalar @arg, $fce, 1) if @arg != 1;
+	return $self->F_get_in_scope_prefixes(@arg);
+
+    } elsif ($fce eq 'get-namespace-uri-for-prefix') {
+	$self->doError(216, 3, "\'$fce()\'") unless $nodes;
+	$self->doError(15, 3, scalar @arg, $fce, 2) if @arg != 2;
+	return $self->F_get_namespace_uri_for_prefix(@arg);
+
     } elsif ($fce eq 'starts-with') {
 	$self->doError(18, 1, $arg[2]->[0]->[0], $fce) if @arg == 3;
 	$self->doError(15, 3, scalar @arg, $fce, 2) if @arg != 2 and @arg != 3;
@@ -475,6 +485,14 @@ sub fcCall {
 	$self->doError(15, 3, scalar @arg, $fce, 2) if @arg != 2 and @arg != 3;
 	return $self->F_subsequence(@arg);
 
+    } elsif ($fce eq 'insert-before') {
+	$self->doError(15, 3, scalar @arg, $fce, 3) if @arg != 3;
+	return $self->F_insert_before(@arg);
+
+    } elsif ($fce eq 'remove') {
+	$self->doError(15, 3, scalar @arg, $fce, 2) if @arg != 2;
+	return $self->F_remove(@arg);
+
     # ----------
     } else {
 	$self->doError(12, 3, $fce);	
@@ -530,7 +548,7 @@ sub dataAccessor {
 	    $result = $self->pathAccessor($nodes);	
 	}
 
-	if ($self->{tokens}->[0] eq '/') {
+	if ($self->{tokens}->[0] and $self->{tokens}->[0] eq '/') {
 	    shift @{$self->{tokens}};
 
 	    if (unpack('A1', $self->{tokens}->[0]) eq '@') {

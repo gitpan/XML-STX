@@ -4,7 +4,6 @@ require 5.005_02;
 BEGIN { require warnings if $] >= 5.006; }
 use strict ('refs', 'subs');
 use vars qw(@EXPORT);
-use Carp;
 use XML::STX::Writer;
 use XML::SAX::PurePerl;
 require Exporter;
@@ -42,6 +41,8 @@ require Exporter;
 	      STXE_COMMENT
 	      STXE_START_BUFFER
 	      STXE_END_BUFFER
+	      STXE_START_PREF
+	      STXE_END_PREF
 
 	      I_LITERAL_START
 	      I_LITERAL_END
@@ -53,6 +54,8 @@ require Exporter;
 	      I_P_SELF_END
 	      I_P_BUFFER_START
 	      I_P_BUFFER_END
+	      I_P_DOC_START
+	      I_P_DOC_END
 	      I_P_ATTRIBUTES_START
 	      I_P_ATTRIBUTES_END
               I_CALL_PROCEDURE_START
@@ -85,6 +88,8 @@ require Exporter;
               I_BUFFER_SCOPE_END
               I_RES_BUFFER_START
               I_RES_BUFFER_END
+              I_RES_DOC_START
+              I_RES_DOC_END
 	      I_WITH_PARAM_START
 	      I_WITH_PARAM_END
 	      I_PARAMETER_START
@@ -97,7 +102,7 @@ require Exporter;
 	      $NUMBER_RE
 	      $DOUBLE_RE
 	      $LITERAL
-	      $FUNCTION
+              $URIREF
 	    );
 
 # node types
@@ -133,6 +138,8 @@ sub STXE_END_CDATA(){8;}
 sub STXE_COMMENT(){9;}
 sub STXE_START_BUFFER(){10;}
 sub STXE_END_BUFFER(){11;}
+sub STXE_START_PREF(){12;}
+sub STXE_END_PREF(){13;}
 
 # instructions
 sub I_LITERAL_START(){1;}
@@ -160,6 +167,8 @@ sub I_CALL_PROCEDURE_START(){22;}
 sub I_CALL_PROCEDURE_END(){23;}
 sub I_P_BUFFER_START(){24;}
 sub I_P_BUFFER_END(){25;}
+sub I_P_DOC_START(){26;}
+sub I_P_DOC_END(){27;}
 
 sub I_IF_START(){101;}
 sub I_IF_END(){102;}
@@ -180,6 +189,8 @@ sub I_RES_BUFFER_END(){116;}
 sub I_WITH_PARAM_START(){117;}
 sub I_WITH_PARAM_END(){118;}
 sub I_PARAMETER_START(){119;}
+sub I_RES_DOC_START(){120;}
+sub I_RES_DOC_END(){121;}
 
 # tokens
 $NCName = '[A-Za-z_][\w\\.\\-]*';
@@ -190,6 +201,7 @@ $NODE_TYPE = '((text|comment|processing-instruction|node|cdata)\\(\\))';
 $NUMBER_RE = '\d+(\\.\d*)?|\\.\d+';
 $DOUBLE_RE = '\d+(\\.\d*)?[eE][+-]?\d+';
 $LITERAL = '\\"[^\\"]*\\"|\\\'[^\\\']*\\\'';
+$URIREF = '[a-z][\w\;\/\?\:\@\&\=\+\$\,\-\_\.\!\~\*\'\(\)\%]+';
 
 # --------------------------------------------------
 # error processing
@@ -220,7 +232,7 @@ sub doError {
 	$txt .= "LINE: $self->{locator}->{LineNumber}\n";
     }
 
-    if ($self->{DBG} or $self->{STX}->{DBG}) {
+    if ($self->{DBG} or (exists $self->{STX} and $self->{STX}->{DBG})) {
 	$txt .= "DEBUG INFO: subroutine: $sub, line: $line\n"
     }
 
@@ -302,6 +314,7 @@ sub _err_msg {
         218 => "_P must follow immediately behind _P (found behind i_P)",
         219 => "Duplicate name of _P: _P",
         220 => "Duplicate name of procedure _P in precedence category _P",
+        221 => "Prefix _P used in _P not declared",
 
 	# Runtime
         501 => "Prefix in <stx:element name=\"_P\"> not declared",

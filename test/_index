@@ -35,7 +35,7 @@ process-combined|01|0|<n >koko(koko){1}[koko]</n><n >mato(mato){2}[mato]</n><n >
 groups|01|0|root.1 node.1 node.2 node.3
 groups-named|01|0|root.1 node.1 koko node.2 mato <<cdata-text>> node.3
 groups-named-att|01|0|/1 @id {koko} $id/2 @id {mato} $id/3 @a0 @a1 @a3 $a0 $a1 $a3
-namespaces01|04|0|<root xmlns:test="http://test_ns" xmlns="http://koko" ><test:node xmlns:test="http://test_ns" id="1" >1</test:node></root>
+namespaces01|04|0|<root xmlns="http://koko" ><test:node id="1" xmlns:test="http://test_ns" >1</test:node></root>
 
 # flow control --------------------
 
@@ -58,13 +58,15 @@ value-of|01|0|<root >text:52 2:5:true:Hi there:a-2-b:a2b</root>
 value-of-att|01|0|1(1)2(1)AC(3)
 value-of-path|01|0|<root >koko:koko:koko:koko:koko:tek:1:1:1:1</root>
 element|01|0|<node ><p:el xmlns:p="NS1" ><g0:el xmlns:g0="NS2" ></g0:el></p:el></node>
+element2|03|0|<root ><node ></node></root>
 element-separate|01|0|<node ><p:el xmlns:p="NS1" ></p:el></node>
-attribute|01|0|<node g0:node="9koko" xmlns:g0="NS" a1="4" ></node>
+attribute|01|0|<node g0:node="9koko" a1="4" xmlns:g0="NS" ></node>
 comment|01|0|T1<!-- Comment Text:2 -->T2T3
 processing-instruction|01|0|T1<?node PI-text?>T2
 string-value1|01|0| other node types  text1 <<cdata-text>> text2 pi-content
 string-value2|01|0|koko/1|/mato/2|//B|A|C|/
 string-value3|03|0|<root >--:koko</root>
+namespace-alias|01|0|<stx:r xmlns:stx="http://stx.sourceforge.net/2002/ns" ><p2:n xmlns:p2="ns:p2" ></p2:n><p1:n stx:a1="c" a2="d" xmlns:p1="ns:p1" ></p1:n></stx:r>
 
 # STXPath --------------------
 
@@ -88,10 +90,14 @@ stxpath-empty|01|0|<node >false:false-true:true</node>
 stxpath-exists|01|0|<node >true:true-false:false</node>
 stxpath-item-at|01|0|<node >b:b-mato:</node>
 stxpath-subsequence|01|0|<node >5;3:c-e 5;2:b-c</node>
+stxpath-insert-before|01|0|<node >z a b c:z a b c:a z b c:a b z c:a b c z/a b c:z/z:a b c/z a b c:a b c z</node>
+stxpath-remove|01|0|<node >a b c:b c:a c:a b:a b c/a b c//a b c:a b c</node>
 stxpath-node-kind|01|0|<document nm="" ><element nm="root" ><element nm="node" ><text nm="" ></text></element><element nm="node" ><text nm="" ></text></element><comment nm="" ></comment><text nm="" ></text><cdata nm="" ></cdata><text nm="" ></text><processing-instruction nm="pi" ></processing-instruction><element nm="node" >attribute</element></element></document>
 stxpath-normalize-space|01|0|<root >ko:koko:ko ko ma:koko</root>
 stxpath-aggregate|01|0|<node >9.8:0/2.45:/-1:1/5:100</node>
 stxpath-numeric|01|0|<node >3:2:-2/10:-11/11:-10</node>
+stxpath-get-in-scope-prefs|03|0|<root >*foo*xml*xmlns<node >*foo*xml*xmlns</node></root>
+stxpath-get-namespace-for-pref|03|0|<root >http://test_ns*http://test_ns2<node >http://test_ns*http://test_ns2</node></root>
 
 # variables & parameters --------------------
 
@@ -107,6 +113,16 @@ param-template3|01|0|<root ><a >3:foo-n2::6:koko</a></root>
 param-template4|01|0|<root ><b >3:foo-n1::6:koko</b></root>
 param-template5|01|0|<root ><p >3:foo-n1::6:koko</p></root>
 
+# includes --------------------
+include1|01|0|Node[id=1]Node[id=2]Node[a0=B][a1=A][a3=C]
+include-params|01|top1=d1|d1d2Node1[id=1]Node2[id=2]Node3[a0=B]3[a1=A]3[a3=C]
+
+# multiple I/O --------------------
+process-document1|02|0|<r ><n >1</n><r ><n >1</n><n >2</n><n >3</n></r></r>
+process-document2|02|0|<r ><n >1</n><er ><en >1</en><en >2</en><en>3</en></er></r>
+process-document3|07|0|<d ><l ><r ><n >1</n><n >2</n><n >3</n></r><r ><n >1</n></r></l></d>
+result-document|01|0|<r >false</r>
+
 # buffers --------------------
 
 buffers01|01|0|<root >:<e >foo</e><n a="1" ></n><n a="2" ></n><n a="3" ></n></root>
@@ -115,6 +131,3 @@ buffers-clear|01|0|<root >e:ef:g</root>
 buffers-local|01|0|<root >:i2eG2:i1eG1</root>
 buffers-recursive|05|0|<l i="2" >:[i.1i.2i.3]<l i="3" >[:[i.1i.2i.3i.4]]</l>[i.4]<l i="3" >[:[i.1i.2i.3]]</l>[i.5i.6]</l>
 
-# includes --------------------
-include1|01|0|Node[id=1]Node[id=2]Node[a0=B][a1=A][a3=C]
-include-params|01|top1=d1|d1d2Node1[id=1]Node2[id=2]Node3[a0=B]3[a1=A]3[a3=C]

@@ -33,7 +33,13 @@ sub start_element {
 	$self->{result} .= "$element->{Attributes}->{$_}->{Name}=\"$element->{Attributes}->{$_}->{Value}\" ";
     }
 
+    foreach (sort keys %{$self->{_start_prefmap}}) {
+	my $attName = $_ ? "xmlns:$_" : 'xmlns';
+	$self->{result} .= "$attName=\"$self->{_start_prefmap}->{$_}\" ";
+    }
+
     $self->{result} .= ">";
+    $self->{_start_prefmap} = {};
 }
 
 sub end_element {
@@ -54,6 +60,16 @@ sub processing_instruction {
     my ($self, $pi) = @_;
 
     $self->{result} .= "<?$pi->{Target} $pi->{Data}?>";
+}
+
+sub start_prefix_mapping {
+    my ($self, $map) = @_;
+    $self->{_start_prefmap}->{$map->{Prefix}} = $map->{NamespaceURI};
+}
+
+sub end_prefix_mapping {
+    my ($self, $map) = @_;
+
 }
 
 # lexical --------------------------------------------------

@@ -40,6 +40,10 @@ sub start_document {
 sub end_document {
     my $self = shift;
 
+    # post-processing
+    $self->_process_templates($self->{Sheet}->{dGroup})
+      if $self->{Sheet}->{alias}->[0];
+
     return $self->{Sheet};
 }
 
@@ -175,7 +179,7 @@ sub start_element {
 		  unless $a->{'{}href'}->{Value} =~ /^$ATT_URIREF$/;
 
 		my $source = $self->{URIResolver}->resolve($a->{'{}href'}->{Value},
-							   $self->{SheetBase});
+							   $self->{URI});
 
 		# nested compiler inherits properties from the current one
  		my $iComp = XML::STX::Compiler->new({include => 1});
@@ -186,7 +190,7 @@ sub start_element {
  		$iComp->{DBG} = $self->{DBG};
  		$iComp->{URIResolver} = $self->{URIResolver};
  		$iComp->{ErrorListener} = $self->{ErrorListener};
- 		$iComp->{SheetBase} = $self->{SheetBase};
+ 		$iComp->{URI} = $self->{URI};
 
  		$source->{XMLReader}->{Handler} = $iComp;
  		$source->{XMLReader}->parse_uri($source->{SystemId});
@@ -196,7 +200,42 @@ sub start_element {
 	} elsif ($el->{LocalName} eq 'namespace-alias') {
 
 	    if ($self->_allowed($el->{LocalName})) {
-		#tbd
+
+		# --- stylesheet-prefix ---
+		$self->doError(212, 3, '<stx:namespace-alias>', 'stylesheet-prefix')
+		  unless exists $a->{'{}stylesheet-prefix'};
+
+		$self->doError(214, 3, 'stylesheet-prefix',
+			       '<stx:namespace-alias>', 'NCName')
+		  unless $a->{'{}stylesheet-prefix'}->{Value} =~ /^$ATT_NCNAME$/
+		    or $a->{'{}stylesheet-prefix'}->{Value} eq '#default';
+
+		my $pre1 = $a->{'{}stylesheet-prefix'}->{Value} eq '#default' 
+		  ? '' : $a->{'{}stylesheet-prefix'}->{Value};
+		my $ns1 = $self->{nsc}->get_uri($pre1);
+		#print "COMP: ns-alias> $pre1:$ns1\n";
+
+		$self->doError(221, 3, $a->{'{}stylesheet-prefix'}->{Value}, 
+			       'stx:namespace-alias') unless $ns1;
+
+		# --- result-prefix ---
+		$self->doError(212, 3, '<stx:namespace-alias>', 'result-prefix')
+		  unless exists $a->{'{}result-prefix'};
+
+		$self->doError(214, 3, 'result-prefix',
+			       '<stx:namespace-alias>', 'NCName')
+		  unless $a->{'{}result-prefix'}->{Value} =~ /^$ATT_NCNAME$/
+		    or $a->{'{}result-prefix'}->{Value} eq '#default';
+
+		my $pre2 = $a->{'{}result-prefix'}->{Value} eq '#default' 
+		  ? '' : $a->{'{}result-prefix'}->{Value};
+		my $ns2 = $self->{nsc}->get_uri($pre2);
+		#print "COMP: ns-alias> $pre2:$ns2\n";
+
+		$self->doError(221, 3, $a->{'{}result-prefix'}->{Value}, 
+			       'stx:namespace-alias') unless $ns2;
+
+		unshift @{$self->{Sheet}->{alias}}, [[$ns1, $pre1], [$ns2, $pre2]];
 	    }
 
 	# <stx:group> ----------------------------------------
@@ -318,6 +357,7 @@ sub start_element {
 		$self->doError(212, 3, '<stx:template>', 'match')
 		  unless exists $a->{'{}match'};
 
+		$t->{pattern} = $a->{'{}match'}->{Value};
 		$t->{match} = $self->tokenize_match($a->{'{}match'}->{Value});
 
 		if ($#{$t->{match}->[0]->[0]->{step}} > -1) {
@@ -428,6 +468,7 @@ sub start_element {
 		}
 	
 		# --- new-scope ---
+		$t->{'new-scope'} = 0;
 		if (exists $a->{'{}new-scope'}) {
 		    if ($a->{'{}new-scope'}->{Value} eq 'yes') {
 			$t->{'new-scope'} = 1
@@ -740,10 +781,10 @@ sub start_element {
 		my $qn = $self->_avt($a->{'{}name'}->{Value});
 
 		my $ns = exists $a->{'{}namespace'}
-		  ? $self->_avt($a->{'{}namespace'}->{Value}) : undef; 
+		  ? $self->_avt($a->{'{}namespace'}->{Value}) : undef;
 
 		push @{$self->{c_template}->{instructions}},
-		  [I_ELEMENT_START, $qn, $ns];
+		  [I_ELEMENT_START, $qn, $ns, clone($self->{nsc})];
 		#print "COMP: >ELEMENT_START\n";
 	    }
 
@@ -761,7 +802,7 @@ sub start_element {
 		  ? $self->_avt($a->{'{}namespace'}->{Value}) : undef; 
 
 		push @{$self->{c_template}->{instructions}},
-		  [I_ELEMENT_END, $qn, $ns];
+		  [I_ELEMENT_END, $qn, $ns, clone($self->{nsc})];
 		#print "COMP: >ELEMENT_END\n";
 	    }
 
@@ -796,7 +837,7 @@ sub start_element {
 
 		$self->{_attribute_select} = $sel;
 		push @{$self->{c_template}->{instructions}},
-		  [I_ATTRIBUTE_START, $qn, $ns, $sel];
+		  [I_ATTRIBUTE_START, $qn, $ns, clone($self->{nsc}), $sel];
 		#print "COMP: >ATTRIBUTE_START\n";
 	    }
 
@@ -964,7 +1005,7 @@ sub start_element {
 		      [I_PARAMETER_START, $name, $select, $default_select, $req];
 		    #print "COMP: >PARAMETER_START\n";
 
-		# stylesheet parameter ------------------------------ zzz
+		# stylesheet parameter ------------------------------
 		} else {
 
 		    # parameter already declared
@@ -983,25 +1024,6 @@ sub start_element {
 		    # list of params
 		    $self->{Sheet}->{dGroup}->{pars}->{$name} = $req;
  		    #print "COMP: >GROUP_VARIABLE - parameter\n";
-
-
-# 		    # parameter already declared
-# 		    $self->doError(211, 3, 'Stylesheet parameter', "\'$name\'") 
-# 		      if $g_stack_top->{vars}->[0]->{$name};
-
-# 		    # actual value
-# 		    $g_stack_top->{vars}->[0]->{$name}->[0]
-# 		      = $self->_static_eval($select);
-# 		    # init value
-# 		    $g_stack_top->{vars}->[0]->{$name}->[1]
-# 		      = clone($g_stack_top->{vars}->[0]->{$name}->[0]);
-# 		    # keep value
-# 		    $g_stack_top->{vars}->[0]->{$name}->[2] = 0;
-
-# 		    # list of params
-# 		    $g_stack_top->{pars}->{$name} = $req;
-#  		    #print "COMP: >GROUP_VARIABLE - parameter\n";
-
 		}
 
 	    }
@@ -1159,14 +1181,69 @@ sub start_element {
 		    $self->doError(214,3,'group','<stx:process-buffer>',
 				   'qname') 
 		      unless $a->{'{}group'}->{Value} =~ /^$ATT_QNAME$/;
-		    $group = $a->{'{}group'}->{Value};
 
-		    $group = $self->_expand_qname($group);
+		    $group = $self->_expand_qname($a->{'{}group'}->{Value});
 		}
 
 		push @{$self->{c_template}->{instructions}}, 
 		  [I_P_BUFFER_START, $name, $group];
 		#print "COMP: >PROCESS BUFFER START\n";
+	    }
+
+	# <stx:result-document> ----------------------------------------
+	} elsif ($el->{LocalName} eq 'result-document') {
+
+	    if ($self->_allowed($el->{LocalName})) {
+		
+		# --- href ---
+		$self->doError(212, 3, '<stx:result-document>', 'href')
+		  unless exists $a->{'{}href'};
+
+		my $href = $self->tokenize($a->{'{}href'}->{Value});
+
+		# --- encoding ---
+		my $encoding;
+		if (exists $a->{'{}encoding'}) {
+		    $self->doError(214,3,'encoding','<stx:result-document>',
+				   'string') 
+		      unless $a->{'{}group'}->{Value} =~ /^$ATT_STRING$/;
+
+		    $encoding = $a->{'{}encoding'}->{Value};
+		}
+		
+		push @{$self->{c_template}->{instructions}},
+		  [I_RES_DOC_START, $href, $encoding];
+		#print "COMP: >RESULT_DOCUMENT_START\n";
+	    }
+
+	# <stx:process-document> ----------------------------------------
+	} elsif ($el->{LocalName} eq'process-document') {
+
+	    if ($self->_allowed($el->{LocalName})) {
+
+		# --- href ---
+		$self->doError(212, 3, '<stx:process-document>', 'href')
+		  unless exists $a->{'{}href'};
+
+		my $href = $self->tokenize($a->{'{}href'}->{Value});
+
+		# --- group ---
+		my $group;
+		if (exists $a->{'{}group'}) {
+		    $self->doError(214,3,'group','<stx:process-document>',
+				   'qname') 
+		      unless $a->{'{}group'}->{Value} =~ /^$ATT_QNAME$/;
+
+		    $group = $self->_expand_qname($a->{'{}group'}->{Value});
+		}
+
+		# --- base ---
+		my $base = exists $a->{'{}base'} 
+		  ? $self->_avt($a->{'{}base'}->{Value}) : undef;
+		
+		push @{$self->{c_template}->{instructions}}, 
+		  [I_P_DOC_START, $href, $group, $base];
+		#print "COMP: >PROCESS DOCUMENT START\n";
 	    }
 
 	} else {
@@ -1177,20 +1254,21 @@ sub start_element {
     } else {
 
 	if ($self->_allowed('_literal')) {
-	    my $i = [I_LITERAL_START, $el];
 
-	    # tokenize AVT in attributes
-	    if (exists $i->[1]->{Attributes}) {
-		foreach (keys %{$i->[1]->{Attributes}}) {
-		    $i->[1]->{Attributes}->{$_}->{Value} 
-		      = $self->_avt($i->[1]->{Attributes}->{$_}->{Value});
+	    if (exists $el->{Attributes}) {
+		foreach my $ns (keys %{$el->{Attributes}}) {
+
+		    # tokenize AVT in attributes
+		    $el->{Attributes}->{$ns}->{Value} 
+		      = $self->_avt($el->{Attributes}->{$ns}->{Value});
 		}
 	    }
 		
+	    my $i = [I_LITERAL_START, $el];
 	    push @{$self->{c_template}->{instructions}}, $i;
 	    #print "COMP: >LITERAL_START $el->{Name}\n";
 
-	} else {
+	} else { #???
 	    $self->doError(210, 3, $el->{Name}) 
 	      unless $el->{NamespaceURI};
 	}
@@ -1253,6 +1331,12 @@ sub end_element {
 
 	    push @{$self->{c_template}->{instructions}}, [I_P_BUFFER_END];
 	    #print "COMP: >PROCESS BUFFER END /$el->{Name}\n";
+
+	# <stx:process-document> ----------------------------------------
+	} elsif ($el->{LocalName} eq 'process-document') {
+
+	    push @{$self->{c_template}->{instructions}}, [I_P_DOC_END];
+	    #print "COMP: >PROCESS DOCUMENT END /$el->{Name}\n";
 
 	# <stx:call-procedure> ----------------------------------------
 	} elsif ($el->{LocalName} eq 'call-procedure') {
@@ -1384,6 +1468,12 @@ sub end_element {
 
 	    push @{$self->{c_template}->{instructions}}, [I_RES_BUFFER_END];
 	    #print "COMP: >RESULT_BUFFER_END\n";
+
+	# <stx:result-document> ----------------------------------------
+	} elsif ($el->{LocalName} eq 'result-document') {
+
+	    push @{$self->{c_template}->{instructions}}, [I_RES_DOC_END];
+	    #print "COMP: >RESULT_DOCUMENT_END\n";
 	}
 
 	# end tags for empty elements can be ignored, their emptiness is 
@@ -1391,7 +1481,7 @@ sub end_element {
 
     # literals
     } else {
-
+	
 	push @{$self->{c_template}->{instructions}}, [I_LITERAL_END, $el];
 	#print "COMP: >LITERAL_END /$el->{Name}\n";
     }
@@ -1665,11 +1755,12 @@ my $s_top_level = [@$s_group, 'param', 'namespace-alias'];
 my $s_text_constr = ['text','cdata','value-of','if','else','choose','_text'];
 
 my $s_content_constr = [@$s_text_constr ,'call-procedure', 'copy',
-			'process-attributes', 'process-self','element',
-			'start-element','end-element', 'processing-instruction',
-			'comment','variable','param', 'assign','buffer',
-			'result-buffer','process-buffer','for-each','_literal',
-			'attribute'];
+			'process-attributes', 'process-self', 'element',
+			'start-element', 'end-element', 'comment',
+			'processing-instruction', 'variable', 'param', 
+			'assign', 'buffer', 'result-buffer', 'process-buffer',
+			'result-document', 'process-document', 'for-each',
+			'_literal', 'attribute'];
 
 my $s_template = [@$s_content_constr, 'process-children'];
 
@@ -1704,6 +1795,7 @@ my $sch = {
 	   cdata => ['_text'],
 	   buffer => $s_template,
 	   'result-buffer' => $s_template,
+	   'result-document' => $s_template,
 	   _literal => $s_template,
 	  };
 
@@ -1786,6 +1878,62 @@ sub _expand_prefixedFce {
 
     my @n = $self->{nsc}->process_attribute_name($qname);
     return $n[0] ? "{$n[0]}$n[2]" : '{' . STX_FNS_URI . "}$n[2]";
+}
+
+sub _process_templates {
+    my ($self, $g) = @_;
+
+    foreach my $t (keys %{$g->{templates}}) {
+
+	# namespace-alias
+	foreach my $i (@{$g->{templates}->{$t}->{instructions}}) {
+	    if ($i->[0] == I_LITERAL_START or $i->[0] == I_LITERAL_END) {
+
+		foreach (@{$self->{Sheet}->{alias}}) {
+		    if ($i->[1]->{NamespaceURI} eq $_->[0]->[0]) {
+			$i->[1]->{NamespaceURI} = $_->[1]->[0];
+			$i->[1]->{Prefix} = $_->[1]->[1];
+			$i->[1]->{Name} = $i->[1]->{Prefix} 
+			  ? "$i->[1]->{Prefix}:$i->[1]->{LocalName}" 
+			    : $i->[1]->{LocalName};
+			last;
+		    }
+		}
+
+		if (exists $i->[1]->{Attributes}) {
+		    foreach my $ns (keys %{$i->[1]->{Attributes}}) {
+
+			foreach (@{$self->{Sheet}->{alias}}) {
+			    if ($i->[1]->{Attributes}->{$ns}->{NamespaceURI} 
+				eq $_->[0]->[0]) {
+				my $key = "{$_->[1]->[0]}" 
+				  . $i->[1]->{Attributes}->{$ns}->{LocalName};
+
+				$i->[1]->{Attributes}->{$key} 
+				  = $i->[1]->{Attributes}->{$ns};
+				delete $i->[1]->{Attributes}->{$ns};
+
+				$i->[1]->{Attributes}->{$key}->{NamespaceURI} 
+				  = $_->[1]->[0];
+				$i->[1]->{Attributes}->{$key}->{Prefix} 
+				  = $_->[1]->[1];
+				$i->[1]->{Attributes}->{$key}->{Name} 
+				  = $i->[1]->{Attributes}->{$key}->{Prefix} 
+				    ? "$i->[1]->{Attributes}->{$key}->{Prefix}:"
+				      . $i->[1]->{Attributes}->{$key}->{LocalName}
+					: $i->[1]->{Attributes}->{$key}->{LocalName};
+				last;
+			    }
+			}
+		    }
+		}
+	    }
+	}
+    }
+
+    foreach (keys %{$g->{groups}}) {
+	$self->_process_templates($g->{groups}->{$_})
+    }
 }
 
 # debug ----------------------------------------

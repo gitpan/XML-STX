@@ -9,7 +9,7 @@ use XML::STX::Runtime;
 use XML::STX::Compiler;
 
 @XML::STX::ISA = qw(XML::STX::TrAX);
-$VERSION = '0.40';
+$VERSION = '0.41';
 
 # --------------------------------------------------
 
@@ -21,7 +21,8 @@ sub new {
     my $self = bless $options, $class;
 
     # TrAX init stuff
-    $self->_init();
+    $self->{URIResolver} = XML::STX::TrAX::URIResolver->new();
+    $self->{ErrorListener} = XML::STX::TrAX::ErrorListener->new();
 
     return $self;
 }

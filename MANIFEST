@@ -25,6 +25,7 @@ test/_data03.xml
 test/_data04.xml
 test/_data05.xml
 test/_data06.xml
+test/_data07.xml
 test/assign.stx
 test/attribute.stx
 test/buffers01.stx
@@ -54,6 +55,7 @@ test/default-stxpath-ns2.stx
 test/default-text.stx
 test/element-separate.stx
 test/element.stx
+test/element2.stx
 test/else.stx
 test/funct-qname.stx
 test/groups.stx
@@ -66,6 +68,7 @@ test/literal-avt.stx
 test/literal.stx
 test/module1.stx
 test/module2.stx
+test/namespace-alias.stx
 test/namespaces01.stx
 test/node-test-text.stx
 test/param-top.stx
@@ -76,9 +79,13 @@ test/param-template4.stx
 test/param-template5.stx
 test/process-attributes.stx
 test/process-combined.stx
+test/process-document1.stx
+test/process-document2.stx
+test/process-document3.stx
 test/process-self.stx
 test/processing-instruction.stx
 test/recursive.stx
+test/result-document.stx
 test/string-value1.stx
 test/string-value2.stx
 test/string-value3.stx
@@ -93,7 +100,10 @@ test/stxpath-count.stx
 test/stxpath-empty.stx
 test/stxpath-ends-with.stx
 test/stxpath-exists.stx
+test/stxpath-get-in-scope-prefs.stx
+test/stxpath-get-namespace-for-pref.stx
 test/stxpath-has-child-nodes.stx
+test/stxpath-insert-before.stx
 test/stxpath-item-at.stx
 test/stxpath-node-kind.stx
 test/stxpath-normalize-space.stx
@@ -101,6 +111,7 @@ test/stxpath-ns.stx
 test/stxpath-numeric.stx
 test/stxpath-position.stx
 test/stxpath-position-att.stx
+test/stxpath-remove.stx
 test/stxpath-starts-with.stx
 test/stxpath-string-length.stx
 test/stxpath-string-join.stx

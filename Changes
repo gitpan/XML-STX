@@ -1,7 +1,16 @@
 Revision history for Perl extension XML::STX.
 
+0.41 July 3, 2003
+	- stx:process-document (@href, @base, @group)
+	- stx:result-document (@href)
+	- stx:namespace-alias (@stylesheet-prefix, @result-prefix)
+	- added STXPath functions: insert-before, remove, 
+	  get-in-scope-prefixes, get-namespace-uri-for-prefix
+	- bug fixes (undefined ErrorListener, NS declarations, 
+	  stx:element)
+
 0.40 May 29, 2003
-	- options moved to stx:transform and stx:group
+        - options moved to stx:transform and stx:group
 	- new matching mechanism (3 precedence categories,
           'visibility' and 'public' attributes)
 	- new visibility applied to procedures

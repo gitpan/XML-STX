@@ -12,7 +12,7 @@ use TestHandler;
 my $templ_uri = shift;
 my $data_uri = shift;
 
-my $stx = XML::STX->new();
+my $stx = XML::STX->new(Writer => 'XML::STX::Writer');
 my $transformer = $stx->new_transformer($templ_uri);
 
 my $source = $stx->new_source($data_uri);
